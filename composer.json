@@ -1,0 +1,74 @@
+{
+    "name": "roundly-consulting/certificates-for-laravel",
+    "description": "Manage and provision TLS certificates for your domains from Laravel via pluggable providers.",
+    "keywords": [
+        "roundly-consulting",
+        "laravel",
+        "certificates",
+        "tls",
+        "kubernetes",
+        "cert-manager"
+    ],
+    "homepage": "https://github.com/roundly-consulting/certificates-for-laravel",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Andrej Mihaliak",
+            "email": "andrej@mihaliak.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "illuminate/contracts": "^12.0|^13.0",
+        "illuminate/http": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.18",
+        "nunomaduro/collision": "^8.5",
+        "orchestra/testbench": "^9.0|^10.0",
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0",
+        "phpstan/extension-installer": "^1.4",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "RoundlyConsulting\\Certificates\\": "src",
+            "RoundlyConsulting\\Certificates\\Database\\Factories\\": "database/factories"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "RoundlyConsulting\\Certificates\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "format": "vendor/bin/pint",
+        "analyse": "vendor/bin/phpstan analyse --no-progress",
+        "test": "vendor/bin/pest",
+        "test-coverage": "vendor/bin/pest --coverage --min=90"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "phpstan/extension-installer": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "RoundlyConsulting\\Certificates\\CertificatesServiceProvider"
+            ],
+            "aliases": {
+                "Certificates": "RoundlyConsulting\\Certificates\\Facades\\Certificates"
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
