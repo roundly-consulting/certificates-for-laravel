@@ -39,7 +39,10 @@
         "psr-4": {
             "RoundlyConsulting\\Certificates\\": "src",
             "RoundlyConsulting\\Certificates\\Database\\Factories\\": "database/factories"
-        }
+        },
+        "files": [
+            "src/helpers.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
