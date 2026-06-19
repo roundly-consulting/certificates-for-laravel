@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Providers;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
-use RoundlyConsulting\Certificates\Certificate;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
+use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
+use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
+use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Exceptions\KubernetesApiException;
+use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 use SensitiveParameter;
 
 /**
@@ -21,7 +25,7 @@ use SensitiveParameter;
  * in-cluster service-account token + CA bundle, all configurable so the
  * provider also works from outside the cluster.
  */
-final class KubernetesProvider implements CertificateProvider
+final class KubernetesProvider implements CertificateProvider, ReportsCertificateStatus
 {
     /**
      * @param  string  $baseUrl  Kubernetes API server base URL (e.g. https://kubernetes.default.svc)
@@ -60,9 +64,49 @@ final class KubernetesProvider implements CertificateProvider
         $items = $response->json('items', []);
 
         return Collection::make($items)
-            ->map(fn (array $item): ?Certificate => $this->mapCertificate($item))
+            ->map(fn (array $item): ?RemoteCertificate => $this->mapCertificate($item))
             ->filter()
             ->values();
+    }
+
+    public function status(string $name, string $domain): CertificateStatusReport
+    {
+        $response = $this->request()->get($this->certificatesPath().'/'.$name);
+
+        if ($response->failed()) {
+            throw KubernetesApiException::fromResponse('reading certificate status', $response);
+        }
+
+        /** @var array<string, mixed> $body */
+        $body = $response->json();
+
+        /** @var list<array<string, mixed>> $conditions */
+        $conditions = $body['status']['conditions'] ?? [];
+
+        $ready = null;
+
+        foreach ($conditions as $condition) {
+            if (($condition['type'] ?? null) === 'Ready') {
+                $ready = $condition;
+
+                break;
+            }
+        }
+
+        $status = match (true) {
+            ($ready['status'] ?? null) === 'True' => CertificateStatus::Issued,
+            $ready !== null => CertificateStatus::Failed,
+            default => CertificateStatus::Pending,
+        };
+
+        /** @var string|null $notAfter */
+        $notAfter = $body['status']['notAfter'] ?? null;
+
+        return new CertificateStatusReport(
+            status: $status,
+            expiresAt: $notAfter !== null ? CarbonImmutable::parse($notAfter) : null,
+            issuer: isset($body['spec']['issuerRef']['name']) ? (string) $body['spec']['issuerRef']['name'] : null,
+        );
     }
 
     public function exists(string $name, string $domain): bool
@@ -111,7 +155,7 @@ final class KubernetesProvider implements CertificateProvider
     /**
      * @param  array<string, mixed>  $item
      */
-    private function mapCertificate(array $item): ?Certificate
+    private function mapCertificate(array $item): ?RemoteCertificate
     {
         /** @var string|null $name */
         $name = $item['metadata']['name'] ?? null;
@@ -124,7 +168,7 @@ final class KubernetesProvider implements CertificateProvider
             return null;
         }
 
-        return new Certificate(name: $name, domain: (string) $domain);
+        return new RemoteCertificate(name: $name, domain: (string) $domain);
     }
 
     /**

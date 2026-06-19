@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Certificates\Contracts;
 
 use Illuminate\Support\Collection;
-use RoundlyConsulting\Certificates\Certificate;
+use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 interface CertificateProvider
 {
     /**
      * List every certificate the provider currently manages.
      *
-     * @return Collection<int, Certificate>
+     * @return Collection<int, RemoteCertificate>
      */
     public function get(): Collection;
 
