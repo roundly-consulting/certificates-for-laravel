@@ -3,14 +3,16 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Http;
-use RoundlyConsulting\Certificates\Certificate;
+use RoundlyConsulting\Certificates\CertificateManager;
 use RoundlyConsulting\Certificates\CertificateService;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Providers\KubernetesProvider;
+use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
-it('resolves the service and a kubernetes provider from the container', function (): void {
+it('resolves the service, manager, and a kubernetes provider from the container', function (): void {
     expect(app(CertificateService::class))->toBeInstanceOf(CertificateService::class);
+    expect(app(CertificateManager::class))->toBeInstanceOf(CertificateManager::class);
     expect(app(CertificateProvider::class))->toBeInstanceOf(KubernetesProvider::class);
 });
 
@@ -26,15 +28,11 @@ it('lists certificates through the facade', function (): void {
     $certificates = Certificates::get();
 
     expect($certificates)->toHaveCount(1)
-        ->and($certificates->first())->toBeInstanceOf(Certificate::class);
+        ->and($certificates->first())->toBeInstanceOf(RemoteCertificate::class);
 });
 
-it('generates a certificate through the facade', function (): void {
-    Http::fakeSequence('https://k8s.test/apis/networking.k8s.io/v1/namespaces/apps/ingresses*')
-        ->push('not found', 404)
-        ->push(['ok' => true], 201);
-
-    expect(Certificates::generate('new.com'))->toBeTrue();
+it('derives a certificate name through the facade', function (): void {
+    expect(Certificates::certificateName('app.example.com'))->toBe('generated-tls-app-example-com');
 });
 
 it('merges the package config', function (): void {

@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Http;
-use RoundlyConsulting\Certificates\Certificate;
 use RoundlyConsulting\Certificates\Exceptions\KubernetesApiException;
 use RoundlyConsulting\Certificates\Providers\KubernetesProvider;
+use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 function provider(): KubernetesProvider
 {
@@ -26,7 +26,7 @@ function provider(): KubernetesProvider
 $certsUrl = 'https://k8s.test/apis/cert-manager.io/v1/namespaces/apps/certificates*';
 $ingressUrl = 'https://k8s.test/apis/networking.k8s.io/v1/namespaces/apps/ingresses*';
 
-it('lists certificates as Certificate objects', function () use ($certsUrl): void {
+it('lists certificates as RemoteCertificate objects', function () use ($certsUrl): void {
     Http::fake([
         $certsUrl => Http::response([
             'items' => [
@@ -40,7 +40,7 @@ it('lists certificates as Certificate objects', function () use ($certsUrl): voi
     $certificates = provider()->get();
 
     expect($certificates)->toHaveCount(2)
-        ->and($certificates->first())->toBeInstanceOf(Certificate::class)
+        ->and($certificates->first())->toBeInstanceOf(RemoteCertificate::class)
         ->and($certificates->first()->domain)->toBe('a.com')
         ->and($certificates->last()->domain)->toBe('b.com');
 });

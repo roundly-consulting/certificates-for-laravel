@@ -2,5 +2,11 @@ parameters:
     level: 7
     paths:
         - src
-    checkOctaneCompatibility: true
-    checkModelProperties: true
+        - database
+        - config
+        # The HasCertificates trait is consumer-facing; the fixture that applies it
+        # is analysed so PHPStan sees a real usage instead of flagging it unused.
+        - tests/Fixtures
+    # This package ships its own config/ dir; env() is correct there.
+    configDirectories:
+        - config

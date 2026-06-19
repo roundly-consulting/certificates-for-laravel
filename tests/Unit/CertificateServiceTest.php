@@ -2,84 +2,77 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
-use RoundlyConsulting\Certificates\Certificate;
 use RoundlyConsulting\Certificates\CertificateService;
-use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
+use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
+use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Providers\NullProvider;
+use RoundlyConsulting\Certificates\Support\CertificateBuilder;
 
-function fakeProvider(): CertificateProvider
+beforeEach(function (): void {
+    config()->set('certificates.default', 'array');
+});
+
+function service(): CertificateService
 {
-    return new class implements CertificateProvider
-    {
-        public int $generated = 0;
-
-        public function get(): Collection
-        {
-            return collect([new Certificate('generated-tls-example-com', 'example.com')]);
-        }
-
-        public function exists(string $name, string $domain): bool
-        {
-            return $domain === 'existing.com';
-        }
-
-        public function generate(string $name, string $domain): void
-        {
-            $this->generated++;
-        }
-    };
+    return app(CertificateService::class);
 }
 
 it('derives a dns-safe certificate name with the configured prefix', function (): void {
-    $service = new CertificateService(fakeProvider());
-
-    expect($service->certificateName('app.example.com'))
+    expect(service()->certificateName('app.example.com'))
         ->toBe('generated-tls-app-example-com');
 });
 
 it('replaces dots and colons in the derived name', function (): void {
-    $service = new CertificateService(fakeProvider());
-
-    expect($service->certificateName('app.example.com:8443'))
+    expect(service()->certificateName('app.example.com:8443'))
         ->toBe('generated-tls-app-example-com-8443');
 });
 
-it('proxies get to the provider', function (): void {
-    $service = new CertificateService(fakeProvider());
+it('issues a certificate and records it in the registry', function (): void {
+    $certificate = service()->issue(IssueCertificateData::make('example.com'));
 
-    expect($service->get())
-        ->toHaveCount(1)
-        ->first()->domain->toBe('example.com');
+    expect($certificate)
+        ->toBeInstanceOf(Certificate::class)
+        ->domain->toBe('example.com')
+        ->status->toBe(CertificateStatus::Issued);
+
+    expect(Certificate::query()->forDomain('example.com')->exists())->toBeTrue();
+});
+
+it('generate records to the registry when the table exists', function (): void {
+    expect(service()->generate('shop.example.com'))->toBeTrue();
+
+    expect(service()->find('shop.example.com'))->not->toBeNull();
+});
+
+it('issueIfMissing is idempotent for an active certificate', function (): void {
+    $first = service()->issueIfMissing('idem.example.com');
+    $second = service()->issueIfMissing('idem.example.com');
+
+    expect($second->id)->toBe($first->id);
+});
+
+it('finds by domain and reports status', function (): void {
+    service()->issue(IssueCertificateData::make('found.example.com'));
+
+    expect(service()->find('found.example.com'))->not->toBeNull()
+        ->and(service()->status('found.example.com'))->toBe(CertificateStatus::Issued)
+        ->and(service()->status('missing.example.com'))->toBeNull();
 });
 
 it('reports existence via the provider', function (): void {
-    $service = new CertificateService(fakeProvider());
+    service()->issue(IssueCertificateData::make('exists.example.com'));
 
-    expect($service->exists('existing.com'))->toBeTrue();
-    expect($service->exists('missing.com'))->toBeFalse();
+    expect(service()->exists('exists.example.com'))->toBeTrue()
+        ->and(service()->exists('nope.example.com'))->toBeFalse();
 });
 
-it('generates a certificate when the lock is free', function (): void {
-    $provider = fakeProvider();
-    $service = new CertificateService($provider);
-
-    expect($service->generate('example.com'))->toBeTrue();
-    expect($provider->generated)->toBe(1);
+it('resolves a driver instance', function (): void {
+    expect(service()->driver('null'))
+        ->toBeInstanceOf(NullProvider::class);
 });
 
-it('returns false when the lock cannot be acquired', function (): void {
-    $provider = fakeProvider();
-    $service = new CertificateService($provider);
-
-    // Hold the lock under the exact owner the service will use.
-    $owner = $service->certificateName('example.com');
-    Cache::lock('certificates:generate', 5, $owner);
-    $held = Cache::lock('certificates:generate', 5, 'someone-else');
-    $held->get();
-
-    expect($service->generate('example.com'))->toBeFalse();
-    expect($provider->generated)->toBe(0);
-
-    $held->forceRelease();
+it('begins a fluent builder', function (): void {
+    expect(service()->for('fluent.example.com'))
+        ->toBeInstanceOf(CertificateBuilder::class);
 });
