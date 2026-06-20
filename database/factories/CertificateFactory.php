@@ -21,7 +21,7 @@ final class CertificateFactory extends Factory
      */
     public function definition(): array
     {
-        $domain = $this->faker->domainName();
+        $domain = $this->faker->unique()->domainName();
 
         return [
             'name' => 'generated-tls-'.str_replace('.', '-', $domain),
