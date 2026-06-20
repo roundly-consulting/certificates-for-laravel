@@ -6,4 +6,10 @@ namespace RoundlyConsulting\Certificates\Exceptions;
 
 use Exception;
 
-class CertificateException extends Exception {}
+class CertificateException extends Exception
+{
+    public static function unparseable(): self
+    {
+        return new self('The supplied PEM could not be parsed as an X.509 certificate.');
+    }
+}
