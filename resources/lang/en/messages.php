@@ -29,5 +29,14 @@ return [
         'queued' => 'Queued renewal for :domain.',
         'pruned' => 'Pruned :count certificate(s).',
         'synced' => 'Synced :count certificate(s) from the :driver provider.',
+        'none_expiring' => 'No certificates are expiring within the threshold.',
+        'no_notifiable' => 'No notification route or notifiable configured; skipping notifications.',
+    ],
+
+    'notifications' => [
+        'expiring' => [
+            'subject' => 'Certificate for :domain is expiring soon',
+            'line' => 'The certificate for :domain expires in :days day(s). Renew it to avoid an outage.',
+        ],
     ],
 ];

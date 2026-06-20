@@ -19,6 +19,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Database connection
+    |--------------------------------------------------------------------------
+    |
+    | The database connection the certificate registry uses by default. Leave
+    | null to use the model's default connection. Multi-tenant apps can target
+    | a specific connection per call with Certificates::on('tenant').
+    |
+    */
+    'connection' => env('CERTIFICATES_DB_CONNECTION'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Registry model & table
     |--------------------------------------------------------------------------
     |
@@ -72,6 +84,43 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Status caching
+    |--------------------------------------------------------------------------
+    |
+    | Provider status() lookups can be cached to avoid a backend round-trip on
+    | every call. Set "store" to a specific cache store (null = default), and
+    | "ttl" to the cache lifetime in seconds. Bypass the cache per call with
+    | the builder's ->fresh() method or statusReport(fresh: true).
+    |
+    */
+    'status_cache' => [
+        'enabled' => (bool) env('CERTIFICATES_STATUS_CACHE', true),
+        'store' => env('CERTIFICATES_STATUS_CACHE_STORE'),
+        'ttl' => (int) env('CERTIFICATES_STATUS_CACHE_TTL', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Expiry notifications (opt-in)
+    |--------------------------------------------------------------------------
+    |
+    | certificates:check fires the CertificateExpiring event for every cert
+    | nearing expiry. When enabled (or run with --notify), it also sends the
+    | CertificateExpiring notification. Provide a notifiable FQCN, or an
+    | on-demand route map keyed by channel (e.g. ['mail' => 'ops@example.com']).
+    |
+    */
+    'notifications' => [
+        'enabled' => (bool) env('CERTIFICATES_NOTIFY', false),
+        'channels' => ['mail'],
+        'route' => [
+            'mail' => env('CERTIFICATES_NOTIFY_MAIL'),
+        ],
+        'notifiable' => env('CERTIFICATES_NOTIFY_NOTIFIABLE'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Drivers
     |--------------------------------------------------------------------------
     |
@@ -120,6 +169,57 @@ return [
                 'name' => env('CERTIFICATES_K8S_SERVICE_NAME'),
                 'port' => (int) env('CERTIFICATES_K8S_SERVICE_PORT', 80),
             ],
+        ],
+
+        // Native ACME v2 (e.g. Let's Encrypt) provider in pure PHP.
+        'acme' => [
+            'directory' => env('CERTIFICATES_ACME_DIRECTORY', 'https://acme-v02.api.letsencrypt.org/directory'),
+            // Staging: https://acme-staging-v02.api.letsencrypt.org/directory
+
+            // Contact email; sent to the CA as a mailto: contact.
+            'contact' => env('CERTIFICATES_ACME_CONTACT'),
+
+            'account' => [
+                // EC (P-256) or RSA (2048-bit) account key.
+                'key_type' => env('CERTIFICATES_ACME_KEY_TYPE', 'EC'),
+                'disk' => env('CERTIFICATES_ACME_ACCOUNT_DISK', 'local'),
+                'key_path' => env('CERTIFICATES_ACME_ACCOUNT_KEY', 'acme/account.pem'),
+                'auto_register' => (bool) env('CERTIFICATES_ACME_AUTO_REGISTER', true),
+            ],
+
+            // "http-01" (shipped) or "dns-01" (provide your own solver).
+            'challenge_type' => env('CERTIFICATES_ACME_CHALLENGE', 'http-01'),
+
+            // Custom AcmeChallengeSolver FQCN; null uses the HTTP-01 solver.
+            'solver' => env('CERTIFICATES_ACME_SOLVER'),
+
+            'http' => [
+                'disk' => env('CERTIFICATES_ACME_HTTP_DISK', 'local'),
+                'path' => env('CERTIFICATES_ACME_HTTP_PATH', 'acme-challenge'),
+            ],
+
+            // Where issued material (leaf, key, chain) is stored.
+            'store' => [
+                'disk' => env('CERTIFICATES_ACME_STORE_DISK', 'local'),
+                'path' => env('CERTIFICATES_ACME_STORE_PATH', 'certificates'),
+            ],
+
+            // Validation/finalization polling bounds.
+            'poll' => [
+                'attempts' => (int) env('CERTIFICATES_ACME_POLL_ATTEMPTS', 30),
+                'seconds' => (int) env('CERTIFICATES_ACME_POLL_SECONDS', 2),
+            ],
+
+            // CA bundle path, or false to disable TLS verification (not recommended).
+            'verify' => env('CERTIFICATES_ACME_VERIFY', true),
+        ],
+
+        // Stores/reads PEM material on a Storage disk; can self-sign for dev.
+        'filesystem' => [
+            'disk' => env('CERTIFICATES_FS_DISK', 'local'),
+            'path' => env('CERTIFICATES_FS_PATH', 'certificates'),
+            'self_signed' => (bool) env('CERTIFICATES_FS_SELF_SIGNED', false),
+            'self_signed_days' => (int) env('CERTIFICATES_FS_SELF_SIGNED_DAYS', 90),
         ],
 
         // No-op driver for local/dev where no certificate backend exists.
