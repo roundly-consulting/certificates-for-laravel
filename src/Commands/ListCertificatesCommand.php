@@ -9,13 +9,17 @@ use RoundlyConsulting\Certificates\Models\Certificate;
 
 final class ListCertificatesCommand extends Command
 {
-    protected $signature = 'certificates:list {--driver=} {--status=} {--expiring=}';
+    protected $signature = 'certificates:list {--driver=} {--status=} {--expiring=} {--connection=}';
 
     protected $description = 'List certificates from the local registry';
 
     public function handle(): int
     {
-        $query = Certificate::query();
+        $connection = is_string($connection = $this->option('connection')) && $connection !== ''
+            ? $connection
+            : null;
+
+        $query = Certificate::on($connection);
 
         if (is_string($driver = $this->option('driver')) && $driver !== '') {
             $query->forDriver($driver);

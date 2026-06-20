@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Certificates\Testing;
 use Illuminate\Support\Collection;
 use PHPUnit\Framework\Assert;
 use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Models\Certificate;
@@ -82,9 +83,14 @@ final class CertificatesFake extends CertificateService
         return $this->store[$domain] ?? $this->issue(IssueCertificateData::make($domain));
     }
 
-    public function for(string $domain): CertificateBuilder
+    public function for(string|array $domain): CertificateBuilder
     {
         return new CertificateBuilder($this, $domain);
+    }
+
+    public function on(?string $connection): static
+    {
+        return $this;
     }
 
     public function find(string $domain, ?string $driver = null): ?Certificate
@@ -95,6 +101,20 @@ final class CertificatesFake extends CertificateService
     public function status(string $domain): ?CertificateStatus
     {
         return $this->store[$domain]->status ?? null;
+    }
+
+    public function statusReport(string $domain, ?string $driver = null, bool $fresh = false): ?CertificateStatusReport
+    {
+        $certificate = $this->store[$domain] ?? null;
+
+        if ($certificate === null) {
+            return null;
+        }
+
+        return new CertificateStatusReport(
+            status: $certificate->status,
+            expiresAt: $certificate->expires_at,
+        );
     }
 
     /**

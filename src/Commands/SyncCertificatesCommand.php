@@ -12,12 +12,16 @@ use RoundlyConsulting\Certificates\Models\Certificate;
 
 final class SyncCertificatesCommand extends Command
 {
-    protected $signature = 'certificates:sync {--driver=}';
+    protected $signature = 'certificates:sync {--driver=} {--connection=}';
 
     protected $description = 'Pull live provider state into the local registry';
 
     public function handle(CertificateManager $manager): int
     {
+        $connection = is_string($connection = $this->option('connection')) && $connection !== ''
+            ? $connection
+            : null;
+
         $driverName = is_string($driver = $this->option('driver')) && $driver !== ''
             ? $driver
             : $manager->getDefaultDriver();
@@ -27,10 +31,14 @@ final class SyncCertificatesCommand extends Command
         $count = 0;
 
         foreach ($provider->get() as $remote) {
-            $model = Certificate::query()->firstOrNew([
+            $model = Certificate::on($connection)->firstOrNew([
                 'driver' => $driverName,
                 'name' => $remote->name,
             ]);
+
+            if ($connection !== null) {
+                $model->setConnection($connection);
+            }
 
             $model->forceFill(['domain' => $remote->domain]);
 

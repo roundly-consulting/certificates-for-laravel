@@ -11,15 +11,19 @@ use RoundlyConsulting\Certificates\Models\Certificate;
 
 final class PruneCertificatesCommand extends Command
 {
-    protected $signature = 'certificates:prune {--days=30} {--status=}';
+    protected $signature = 'certificates:prune {--days=30} {--status=} {--connection=}';
 
     protected $description = 'Soft-delete stale expired/failed certificate records';
 
     public function handle(): int
     {
+        $connection = is_string($connection = $this->option('connection')) && $connection !== ''
+            ? $connection
+            : null;
+
         $days = is_numeric($this->option('days')) ? (int) $this->option('days') : 30;
 
-        $query = Certificate::query()
+        $query = Certificate::on($connection)
             ->where('updated_at', '<=', CarbonImmutable::now()->subDays($days));
 
         if (is_string($status = $this->option('status')) && $status !== '') {

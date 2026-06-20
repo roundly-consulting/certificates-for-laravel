@@ -9,20 +9,47 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Support\Traits\Macroable;
 use RoundlyConsulting\Certificates\Actions\IssueCertificateAction;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
+use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateBuilder;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 class CertificateService
 {
+    use Macroable;
+
+    protected ?string $connection = null;
+
+    private ?CachedStatusResolver $statusResolver = null;
+
     public function __construct(
         protected readonly CertificateManager $manager,
         protected readonly IssueCertificateAction $issueAction,
-    ) {}
+        ?CachedStatusResolver $statusResolver = null,
+        ?string $connection = null,
+    ) {
+        $this->statusResolver = $statusResolver;
+
+        $configured = config('certificates.connection');
+        $this->connection = $connection ?? (is_string($configured) && $configured !== '' ? $configured : null);
+    }
+
+    /**
+     * Return a connection-bound clone targeting a chosen DB connection.
+     */
+    public function on(?string $connection): static
+    {
+        $clone = clone $this;
+        $clone->connection = $connection;
+
+        return $clone;
+    }
 
     /**
      * List every certificate managed by the active provider.
@@ -52,7 +79,7 @@ class CertificateService
     public function generate(string $domain): bool
     {
         if ($this->registryAvailable()) {
-            $this->issueAction->execute(IssueCertificateData::make($domain));
+            $this->issueAction->execute(IssueCertificateData::make($domain), $this->connection);
 
             return true;
         }
@@ -78,7 +105,7 @@ class CertificateService
      */
     public function issue(IssueCertificateData $data): Certificate
     {
-        return $this->issueAction->execute($data);
+        return $this->issueAction->execute($data, $this->connection);
     }
 
     /**
@@ -96,9 +123,11 @@ class CertificateService
     }
 
     /**
-     * Begin a fluent issuance for a domain.
+     * Begin a fluent issuance for a domain (or set of SAN domains).
+     *
+     * @param  string|list<string>  $domain
      */
-    public function for(string $domain): CertificateBuilder
+    public function for(string|array $domain): CertificateBuilder
     {
         return new CertificateBuilder($this, $domain);
     }
@@ -112,7 +141,7 @@ class CertificateService
             return null;
         }
 
-        return Certificate::query()
+        return Certificate::on($this->connection)
             ->forDomain($domain)
             ->when($driver !== null, fn ($query) => $query->forDriver($driver))
             ->latest('id')
@@ -120,11 +149,21 @@ class CertificateService
     }
 
     /**
-     * Report the current status of a certificate by domain.
+     * Report the current status of a certificate by domain (registry enum).
      */
     public function status(string $domain): ?CertificateStatus
     {
         return $this->find($domain)?->status;
+    }
+
+    /**
+     * Report the live, cache-aware status of a certificate by domain.
+     */
+    public function statusReport(string $domain, ?string $driver = null, bool $fresh = false): ?CertificateStatusReport
+    {
+        $driver ??= $this->manager->getDefaultDriver();
+
+        return $this->resolver()->resolve($driver, $this->certificateName($domain), $domain, $fresh);
     }
 
     /**
@@ -145,9 +184,14 @@ class CertificateService
         return $prefix.Str::of($domain)->kebab()->replace(['.', ':'], '-')->value();
     }
 
-    private function registryAvailable(): bool
+    protected function registryAvailable(): bool
     {
-        return Schema::hasTable((string) config('certificates.table', 'certificates'));
+        return Schema::connection($this->connection)->hasTable((string) config('certificates.table', 'certificates'));
+    }
+
+    private function resolver(): CachedStatusResolver
+    {
+        return $this->statusResolver ??= app(CachedStatusResolver::class);
     }
 
     private function generateLock(string $owner): Lock

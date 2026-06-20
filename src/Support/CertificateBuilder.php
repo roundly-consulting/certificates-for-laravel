@@ -5,13 +5,22 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Certificates\Support;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Traits\Macroable;
 use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Models\Certificate;
 
 final class CertificateBuilder
 {
+    use Macroable;
+
+    /** @var list<string> */
+    private array $domains;
+
+    private string $domain;
+
     private ?string $driver = null;
 
     private ?string $issuer = null;
@@ -25,10 +34,27 @@ final class CertificateBuilder
 
     private ?Model $owner = null;
 
+    private bool $fresh = false;
+
+    /**
+     * @param  string|list<string>  $domain
+     */
     public function __construct(
         private readonly CertificateService $service,
-        private readonly string $domain,
-    ) {}
+        string|array $domain,
+    ) {
+        $this->domains = is_array($domain) ? $domain : [$domain];
+        $this->domain = $this->domains[0];
+    }
+
+    public function alsoFor(string ...$domains): self
+    {
+        foreach ($domains as $domain) {
+            $this->domains[] = $domain;
+        }
+
+        return $this;
+    }
 
     public function using(string $driver): self
     {
@@ -75,6 +101,13 @@ final class CertificateBuilder
         return $this;
     }
 
+    public function fresh(bool $fresh = true): self
+    {
+        $this->fresh = $fresh;
+
+        return $this;
+    }
+
     public function issue(): Certificate
     {
         return $this->service->issue($this->toData());
@@ -101,6 +134,11 @@ final class CertificateBuilder
         return $this->service->status($this->domain);
     }
 
+    public function statusReport(): ?CertificateStatusReport
+    {
+        return $this->service->statusReport($this->domain, $this->driver, $this->fresh);
+    }
+
     public function find(): ?Certificate
     {
         return $this->service->find($this->domain, $this->driver);
@@ -116,6 +154,7 @@ final class CertificateBuilder
             validForDays: $this->validForDays,
             meta: $this->meta,
             owner: $this->owner,
+            domains: count($this->domains) > 1 ? $this->domains : [],
         );
     }
 }

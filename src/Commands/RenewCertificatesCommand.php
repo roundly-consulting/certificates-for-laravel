@@ -13,13 +13,17 @@ use RoundlyConsulting\Certificates\Models\Certificate;
 
 final class RenewCertificatesCommand extends Command
 {
-    protected $signature = 'certificates:renew {domain?} {--threshold=} {--queue}';
+    protected $signature = 'certificates:renew {domain?} {--threshold=} {--queue} {--connection=}';
 
     protected $description = 'Renew certificates that are expiring (or a single domain)';
 
     public function handle(RenewCertificateAction $action): int
     {
-        $query = Certificate::query();
+        $connection = is_string($connection = $this->option('connection')) && $connection !== ''
+            ? $connection
+            : null;
+
+        $query = Certificate::on($connection);
 
         if (is_string($domain = $this->argument('domain')) && $domain !== '') {
             $query->forDomain($domain);
