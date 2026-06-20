@@ -30,9 +30,9 @@ it('requests a certificate attached to the owner', function (): void {
 it('lists active and expiring certificates for the owner', function (): void {
     $tenant = Tenant::query()->create(['name' => 'Acme']);
 
-    $tenant->certificates()->save(Certificate::factory()->issued()->make());
-    $tenant->certificates()->save(Certificate::factory()->expiring(5)->make());
-    $tenant->certificates()->save(Certificate::factory()->expired()->make());
+    $tenant->certificates()->save(Certificate::factory()->issued()->forDomain('active.example.com')->make());
+    $tenant->certificates()->save(Certificate::factory()->expiring(5)->forDomain('soon.example.com')->make());
+    $tenant->certificates()->save(Certificate::factory()->expired()->forDomain('gone.example.com')->make());
 
     expect($tenant->activeCertificates())->toHaveCount(2)
         ->and($tenant->expiringCertificates(7))->toHaveCount(1);
