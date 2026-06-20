@@ -10,13 +10,13 @@ jobs:
       fail-fast: true
       matrix:
         php: [8.4]
-        laravel: [12, 13]
+        laravel: [12.*, 13.*]
         stability: [prefer-stable]
         include:
-          - laravel: 12
-            testbench: 9
-          - laravel: 13
-            testbench: 10
+          - laravel: 12.*
+            testbench: 10.*
+          - laravel: 13.*
+            testbench: 11.*
 
     name: P${{ matrix.php }} - L${{ matrix.laravel }} - ${{ matrix.stability }}
 
@@ -33,7 +33,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer require "illuminate/contracts:^${{ matrix.laravel }}.0" "orchestra/testbench:^${{ matrix.testbench }}.0" --no-interaction --no-update
+          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction
 
       - name: List installed dependencies
