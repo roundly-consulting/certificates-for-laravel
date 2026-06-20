@@ -1,0 +1,23 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        $table = (string) config('certificates.table', 'certificates');
+
+        if (Schema::hasColumn($table, 'domains')) {
+            return;
+        }
+
+        Schema::table($table, function (Blueprint $table): void {
+            $table->json('domains')->nullable()->after('domain');
+        });
+    }
+};

@@ -28,3 +28,13 @@ it('reports issued status with expiry once generated', function (): void {
     expect($report->status)->toBe(CertificateStatus::Issued)
         ->and($report->expiresAt)->not->toBeNull();
 });
+
+it('records generateMany calls covering every domain', function (): void {
+    $provider = new ArrayProvider;
+    $provider->generateMany('generated-tls-a-com', ['a.com', 'www.a.com']);
+
+    expect($provider->exists('generated-tls-a-com', 'a.com'))->toBeTrue()
+        ->and($provider->generatedManyCalls())->toBe([
+            ['name' => 'generated-tls-a-com', 'domains' => ['a.com', 'www.a.com']],
+        ]);
+});

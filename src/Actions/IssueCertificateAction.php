@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\Contracts\ProvisionsMultipleDomains;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
@@ -27,17 +28,21 @@ final class IssueCertificateAction
         private readonly CertificateManager $manager,
     ) {}
 
-    public function execute(IssueCertificateData $data): Certificate
+    public function execute(IssueCertificateData $data, ?string $connection = null): Certificate
     {
-        if (! (new ValidDomain)->passes($data->domain)) {
-            throw InvalidDomainException::forDomain($data->domain);
+        $rule = new ValidDomain;
+
+        foreach ($data->allDomains() as $candidate) {
+            if (! $rule->passes($candidate)) {
+                throw InvalidDomainException::forDomain($candidate);
+            }
         }
 
         $driver = $data->driver ?? $this->manager->getDefaultDriver();
         $provider = $this->manager->provider($driver);
         $name = $this->certificateName($data->domain);
 
-        $certificate = $this->upsertCertificate($name, $data, $driver);
+        $certificate = $this->upsertCertificate($name, $data, $driver, $connection);
 
         Event::dispatch(new CertificateRequested($certificate));
 
@@ -48,7 +53,11 @@ final class IssueCertificateAction
         }
 
         try {
-            $provider->generate($name, $data->domain);
+            if ($provider instanceof ProvisionsMultipleDomains && count($data->allDomains()) > 1) {
+                $provider->generateMany($name, $data->allDomains());
+            } else {
+                $provider->generate($name, $data->domain);
+            }
         } catch (Throwable $e) {
             $certificate->markFailed($e->getMessage());
             Event::dispatch(new CertificateFailed($certificate, $e->getMessage()));
@@ -67,19 +76,26 @@ final class IssueCertificateAction
         return $certificate;
     }
 
-    private function upsertCertificate(string $name, IssueCertificateData $data, string $driver): Certificate
+    private function upsertCertificate(string $name, IssueCertificateData $data, string $driver, ?string $connection): Certificate
     {
-        $model = Certificate::query()->firstOrNew([
+        $model = Certificate::on($connection)->firstOrNew([
             'driver' => $driver,
             'name' => $name,
         ]);
 
+        $allDomains = $data->allDomains();
+
         $model->forceFill([
             'domain' => $data->domain,
+            'domains' => count($allDomains) > 1 ? $allDomains : null,
             'status' => CertificateStatus::Requested,
             'issuer' => $data->issuer,
             'meta' => $data->meta === [] ? null : $data->meta,
         ]);
+
+        if ($connection !== null) {
+            $model->setConnection($connection);
+        }
 
         if ($data->owner !== null) {
             $model->certifiable()->associate($data->owner);

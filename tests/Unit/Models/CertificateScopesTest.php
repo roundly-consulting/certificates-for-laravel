@@ -51,3 +51,13 @@ it('scopes by domain and driver', function (): void {
     expect(Certificate::query()->forDomain('a.example.com')->count())->toBe(1)
         ->and(Certificate::query()->forDriver('null')->count())->toBe(1);
 });
+
+it('scopes by covering domain across the primary and SAN list', function (): void {
+    Certificate::factory()->create(['domain' => 'primary.com', 'domains' => null]);
+    Certificate::factory()->create(['domain' => 'app.com', 'domains' => ['app.com', 'www.app.com']]);
+
+    expect(Certificate::query()->coveringDomain('primary.com')->count())->toBe(1)
+        ->and(Certificate::query()->coveringDomain('www.app.com')->count())->toBe(1)
+        ->and(Certificate::query()->coveringDomain('app.com')->count())->toBe(1)
+        ->and(Certificate::query()->coveringDomain('nope.com')->count())->toBe(0);
+});

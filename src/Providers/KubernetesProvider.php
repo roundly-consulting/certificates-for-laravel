@@ -9,6 +9,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
+use RoundlyConsulting\Certificates\Contracts\ProvisionsMultipleDomains;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
@@ -25,7 +26,7 @@ use SensitiveParameter;
  * in-cluster service-account token + CA bundle, all configurable so the
  * provider also works from outside the cluster.
  */
-final class KubernetesProvider implements CertificateProvider, ReportsCertificateStatus
+final class KubernetesProvider implements CertificateProvider, ProvisionsMultipleDomains, ReportsCertificateStatus
 {
     /**
      * @param  string  $baseUrl  Kubernetes API server base URL (e.g. https://kubernetes.default.svc)
@@ -126,6 +127,14 @@ final class KubernetesProvider implements CertificateProvider, ReportsCertificat
 
     public function generate(string $name, string $domain): void
     {
+        $this->generateMany($name, [$domain]);
+    }
+
+    /**
+     * @param  list<string>  $domains
+     */
+    public function generateMany(string $name, array $domains): void
+    {
         $ingress = $this->fetchIngress();
 
         $schema = $ingress ?? $this->baseIngressSchema();
@@ -134,8 +143,8 @@ final class KubernetesProvider implements CertificateProvider, ReportsCertificat
         $tls = $schema['spec']['tls'] ?? [];
 
         foreach ($tls as $entry) {
-            if (in_array($domain, $entry['hosts'] ?? [], true)) {
-                // The Ingress already routes this domain; nothing to do.
+            if (($entry['secretName'] ?? null) === $name) {
+                // The Ingress already has a TLS entry for this secret; nothing to do.
                 return;
             }
         }
@@ -143,8 +152,11 @@ final class KubernetesProvider implements CertificateProvider, ReportsCertificat
         /** @var list<array<string, mixed>> $rules */
         $rules = $schema['spec']['rules'] ?? [];
 
-        $tls[] = ['hosts' => [$domain], 'secretName' => $name];
-        $rules[] = $this->ruleFor($domain);
+        $tls[] = ['hosts' => $domains, 'secretName' => $name];
+
+        foreach ($domains as $domain) {
+            $rules[] = $this->ruleFor($domain);
+        }
 
         $schema['spec']['tls'] = $tls;
         $schema['spec']['rules'] = $rules;

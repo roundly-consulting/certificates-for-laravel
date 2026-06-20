@@ -18,6 +18,7 @@ use RoundlyConsulting\Certificates\Enums\CertificateStatus;
  * @property int $id
  * @property string $name
  * @property string $domain
+ * @property list<string>|null $domains
  * @property string $driver
  * @property CertificateStatus $status
  * @property string|null $issuer
@@ -47,6 +48,17 @@ final class Certificate extends Model
     public function getTable(): string
     {
         return (string) config('certificates.table', 'certificates');
+    }
+
+    public function getConnectionName(): ?string
+    {
+        $configured = config('certificates.connection');
+
+        if ($this->connection === null && is_string($configured) && $configured !== '') {
+            return $configured;
+        }
+
+        return parent::getConnectionName();
     }
 
     /**
@@ -173,6 +185,20 @@ final class Certificate extends Model
         $query->where('driver', $driver);
     }
 
+    /**
+     * Match rows whose primary domain equals the given domain, or whose SAN
+     * list (the json "domains" column) contains it.
+     *
+     * @param  Builder<Certificate>  $query
+     */
+    public function scopeCoveringDomain(Builder $query, string $domain): void
+    {
+        $query->where(function (Builder $query) use ($domain): void {
+            $query->where('domain', $domain)
+                ->orWhereJsonContains('domains', $domain);
+        });
+    }
+
     protected static function newFactory(): CertificateFactory
     {
         return CertificateFactory::new();
@@ -189,6 +215,7 @@ final class Certificate extends Model
             'expires_at' => 'immutable_datetime',
             'last_renewed_at' => 'immutable_datetime',
             'meta' => 'array',
+            'domains' => 'array',
         ];
     }
 }
