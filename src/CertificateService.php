@@ -5,16 +5,21 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Certificates;
 
 use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Macroable;
+use RoundlyConsulting\Alerts\Support\PendingScheduledCheck;
 use RoundlyConsulting\Certificates\Actions\IssueCertificateAction;
+use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
+use RoundlyConsulting\Certificates\Alerts\ExpiryNotifiableResolver;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateBuilder;
@@ -164,6 +169,28 @@ class CertificateService
         $driver ??= $this->manager->getDefaultDriver();
 
         return $this->resolver()->resolve($driver, $this->certificateName($domain), $domain, $fresh);
+    }
+
+    /**
+     * Schedule alerts-for-laravel expiry monitoring for a certificate.
+     *
+     * Returns the alerts PendingScheduledCheck builder so the host chains
+     * frequency/failAfter/notifyVia/escalate before ->save(). The notifiable is
+     * resolved with the precedence: explicit arg -> config FQCN -> certifiable owner.
+     *
+     * @throws CertificateException when no notifiable can be resolved
+     */
+    public function monitorExpiry(Certificate $certificate, ?Model $notifiable = null): PendingScheduledCheck
+    {
+        $target = app(ExpiryNotifiableResolver::class)->resolve($certificate, $notifiable);
+
+        if ($target === null) {
+            throw CertificateException::noAlertNotifiable($certificate->domain);
+        }
+
+        return (new PendingScheduledCheck($target, CertificateExpiryCheck::class))
+            ->tags(['certificates'])
+            ->meta(['certificate_id' => $certificate->id]);
     }
 
     /**

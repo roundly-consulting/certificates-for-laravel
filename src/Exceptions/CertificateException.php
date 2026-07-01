@@ -12,4 +12,12 @@ class CertificateException extends Exception
     {
         return new self('The supplied PEM could not be parsed as an X.509 certificate.');
     }
+
+    public static function noAlertNotifiable(string $domain): self
+    {
+        return new self(
+            "No alert notifiable could be resolved for [{$domain}]. Pass one to monitorExpiry(), ".
+            'set certificates.alerts.notifiable, or associate the certificate with a certifiable owner.',
+        );
+    }
 }

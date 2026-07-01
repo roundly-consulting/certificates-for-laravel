@@ -101,22 +101,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Expiry notifications (opt-in)
+    | Expiry monitoring via alerts-for-laravel
     |--------------------------------------------------------------------------
     |
-    | certificates:check fires the CertificateExpiring event for every cert
-    | nearing expiry. When enabled (or run with --notify), it also sends the
-    | CertificateExpiring notification. Provide a notifiable FQCN, or an
-    | on-demand route map keyed by channel (e.g. ['mail' => 'ops@example.com']).
+    | Certificate expiry is routed through the alerts health-check engine, so it
+    | inherits alert dedup/throttle, escalation, silence windows, history and the
+    | /health surface. certificates:check runs the CertificateExpiryCheck for
+    | every expiring cert against a resolved notifiable when "enabled" is true.
+    |
+    | "notifiable" is an optional FQCN resolved from the container; it takes
+    | precedence over each certificate's own certifiable owner. "thresholds"
+    | drive the check's warning/critical banding (warning >= critical). Set
+    | "register_check" to register a registry-wide CertificateExpiryCheck with
+    | the alerts registry at boot for a single global expiry signal.
     |
     */
-    'notifications' => [
-        'enabled' => (bool) env('CERTIFICATES_NOTIFY', false),
-        'channels' => ['mail'],
-        'route' => [
-            'mail' => env('CERTIFICATES_NOTIFY_MAIL'),
+    'alerts' => [
+        'enabled' => (bool) env('CERTIFICATES_ALERTS', false),
+        'notifiable' => env('CERTIFICATES_ALERTS_NOTIFIABLE'),
+        'thresholds' => [
+            'warning_days' => (int) env('CERTIFICATES_ALERTS_WARNING_DAYS', 30),
+            'critical_days' => (int) env('CERTIFICATES_ALERTS_CRITICAL_DAYS', 7),
         ],
-        'notifiable' => env('CERTIFICATES_NOTIFY_NOTIFIABLE'),
+        'channels' => ['mail'],
+        'register_check' => (bool) env('CERTIFICATES_ALERTS_REGISTER_CHECK', false),
     ],
 
     /*

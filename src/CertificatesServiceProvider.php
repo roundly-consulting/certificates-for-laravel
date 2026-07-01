@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Certificates;
 
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use RoundlyConsulting\Alerts\Facades\Health;
+use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
 use RoundlyConsulting\Certificates\ChallengeSolvers\HttpChallengeSolver;
 use RoundlyConsulting\Certificates\Commands\CheckCertificatesCommand;
 use RoundlyConsulting\Certificates\Commands\IssueCertificateCommand;
@@ -16,6 +19,10 @@ use RoundlyConsulting\Certificates\Commands\SyncCertificatesCommand;
 use RoundlyConsulting\Certificates\Contracts\AcmeChallengeSolver;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\Contracts\CertificateStore;
+use RoundlyConsulting\Certificates\Events\CertificateExpired;
+use RoundlyConsulting\Certificates\Events\CertificateFailed;
+use RoundlyConsulting\Certificates\Events\CertificateRevoked;
+use RoundlyConsulting\Certificates\Listeners\AlertOnCertificateLifecycleFailure;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\X509Parser;
@@ -81,6 +88,15 @@ final class CertificatesServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'certificates');
+
+        Event::listen(
+            [CertificateFailed::class, CertificateRevoked::class, CertificateExpired::class],
+            AlertOnCertificateLifecycleFailure::class,
+        );
+
+        if (config('certificates.alerts.register_check', false) === true) {
+            Health::check(new CertificateExpiryCheck);
+        }
 
         if ($this->app->runningInConsole()) {
             $this->commands([

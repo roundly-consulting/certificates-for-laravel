@@ -21,6 +21,7 @@ use RoundlyConsulting\Certificates\Testing\CertificatesFake;
  * @method static \RoundlyConsulting\Certificates\Enums\CertificateStatus|null status(string $domain)
  * @method static \RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport|null statusReport(string $domain, ?string $driver = null, bool $fresh = false)
  * @method static \RoundlyConsulting\Certificates\Contracts\CertificateProvider driver(?string $name = null)
+ * @method static \RoundlyConsulting\Alerts\Support\PendingScheduledCheck monitorExpiry(\RoundlyConsulting\Certificates\Models\Certificate $certificate, ?\Illuminate\Database\Eloquent\Model $notifiable = null)
  *
  * @see CertificateService
  */

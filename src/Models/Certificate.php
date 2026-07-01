@@ -11,8 +11,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Certificates\Database\Factories\CertificateFactory;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\Certificates\Events\CertificateExpired;
+use RoundlyConsulting\Certificates\Events\CertificateRevoked;
 
 /**
  * @property int $id
@@ -131,6 +134,35 @@ final class Certificate extends Model
             'status' => CertificateStatus::Failed,
             'last_error' => $reason,
         ])->save();
+
+        return $this;
+    }
+
+    /**
+     * Mark the certificate as revoked and dispatch the CertificateRevoked event.
+     */
+    public function markRevoked(?string $reason = null): self
+    {
+        $this->forceFill([
+            'status' => CertificateStatus::Revoked,
+            'last_error' => $reason,
+        ])->save();
+
+        Event::dispatch(new CertificateRevoked($this, $reason));
+
+        return $this;
+    }
+
+    /**
+     * Mark the certificate as expired and dispatch the CertificateExpired event.
+     */
+    public function markExpired(): self
+    {
+        $this->forceFill([
+            'status' => CertificateStatus::Expired,
+        ])->save();
+
+        Event::dispatch(new CertificateExpired($this));
 
         return $this;
     }

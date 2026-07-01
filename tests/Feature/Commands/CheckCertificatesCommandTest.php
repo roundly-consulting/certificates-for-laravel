@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Notification;
+use RoundlyConsulting\Alerts\Alert;
+use RoundlyConsulting\Alerts\Facades\Health;
 use RoundlyConsulting\Certificates\Events\CertificateExpiring as CertificateExpiringEvent;
 use RoundlyConsulting\Certificates\Models\Certificate;
-use RoundlyConsulting\Certificates\Notifications\CertificateExpiring as CertificateExpiringNotification;
+use RoundlyConsulting\Certificates\Tests\Fixtures\AlertTeam;
 
 beforeEach(function (): void {
     Certificate::factory()->expiring(5)->create(['domain' => 'soon.com', 'driver' => 'array']);
@@ -15,53 +15,63 @@ beforeEach(function (): void {
     Certificate::factory()->expired()->create(['domain' => 'gone.com', 'driver' => 'array']);
 });
 
-it('fires events for expiring certificates without notifying by default', function (): void {
+it('fires events for expiring certificates without alerting by default', function (): void {
     Event::fake();
-    Notification::fake();
+    $fake = Health::fake();
 
     $this->artisan('certificates:check')->assertSuccessful();
 
     Event::assertDispatched(CertificateExpiringEvent::class, 1);
-    Notification::assertNothingSent();
+    $fake->assertNothingAlerted();
 });
 
-it('notifies an on-demand route when --notify is given', function (): void {
-    config()->set('certificates.notifications.route', ['mail' => 'ops@example.com']);
-    Notification::fake();
+it('routes an alert through the engine per expiring cert when --alert is given', function (): void {
+    $team = AlertTeam::query()->create(['name' => 'ops', 'email' => 'ops@example.com']);
+    config()->set('certificates.alerts.notifiable', get_class($team));
+    $this->app->instance(get_class($team), $team);
 
-    $this->artisan('certificates:check --notify')->assertSuccessful();
+    $this->artisan('certificates:check --alert')->assertSuccessful();
 
-    Notification::assertSentOnDemand(CertificateExpiringNotification::class);
+    expect(Alert::query()->where('health_check_id', '!=', null)->count())->toBe(1)
+        ->and($team->alerts()->count())->toBe(1);
 });
 
-it('notifies a configured notifiable instance', function (): void {
-    config()->set('certificates.notifications.notifiable', CheckTeam::class);
-    Notification::fake();
+it('resolves the certifiable owner as the alert notifiable', function (): void {
+    $team = AlertTeam::query()->create(['name' => 'team']);
+    $cert = Certificate::factory()->expiring(3)->create(['domain' => 'owned.com', 'driver' => 'array']);
+    $cert->certifiable()->associate($team)->save();
 
-    $this->artisan('certificates:check --notify')->assertSuccessful();
+    config()->set('certificates.alerts.enabled', true);
 
-    Notification::assertSentTo(new CheckTeam, CertificateExpiringNotification::class);
+    $this->artisan('certificates:check --threshold=4')->assertSuccessful();
+
+    expect($team->alerts()->count())->toBe(1);
 });
 
-it('warns and skips when no route or notifiable is configured', function (): void {
-    config()->set('certificates.notifications.route', []);
-    config()->set('certificates.notifications.notifiable', null);
-    Notification::fake();
-    Event::fake();
+it('warns and skips a cert with no resolvable notifiable', function (): void {
+    config()->set('certificates.alerts.notifiable', null);
 
-    $this->artisan('certificates:check --notify')
-        ->expectsOutputToContain('No notification route')
+    $this->artisan('certificates:check --alert')
+        ->expectsOutputToContain('No alert notifiable resolved')
         ->assertSuccessful();
 
-    Notification::assertNothingSent();
-    Event::assertDispatched(CertificateExpiringEvent::class, 1);
+    expect(Alert::query()->count())->toBe(0);
+});
+
+it('does not re-open a second alert on a re-run within the throttle window', function (): void {
+    $team = AlertTeam::query()->create(['name' => 'ops']);
+    config()->set('certificates.alerts.notifiable', get_class($team));
+    $this->app->instance(get_class($team), $team);
+
+    $this->artisan('certificates:check --alert')->assertSuccessful();
+    $this->artisan('certificates:check --alert')->assertSuccessful();
+
+    expect($team->alerts()->whereNull('recovered_at')->count())->toBe(1);
 });
 
 it('respects the threshold option', function (): void {
     Event::fake();
 
-    // A 60-day window also catches the healthy (90-day) cert? No — issued()
-    // expires in 90 days, beyond 60. Lower window still only finds soon.com.
     $this->artisan('certificates:check --threshold=10')->assertSuccessful();
 
     Event::assertDispatched(CertificateExpiringEvent::class, 1);
@@ -83,18 +93,3 @@ it('reports when nothing is expiring', function (): void {
         ->expectsOutputToContain('No certificates are expiring')
         ->assertSuccessful();
 });
-
-final class CheckTeam
-{
-    use Notifiable;
-
-    public function getKey(): int
-    {
-        return 1;
-    }
-
-    public function routeNotificationForMail(): string
-    {
-        return 'team@example.com';
-    }
-}
