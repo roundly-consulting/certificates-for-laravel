@@ -27,14 +27,28 @@ Pluggable providers cover the common deployment shapes:
   local development.
 - **`null`** / **`array`** — an inert no-op and an in-memory backend powering `Certificates::fake()`.
 
-On top of issuance it adds **multi-domain / SAN + wildcard** certificates, opt-in **expiry
-monitoring & notifications**, cache-aware **status reports**, **multi-tenant** connection targeting,
-and **macroable** services. The provider contract is public, so you can plug in your own backend.
+On top of issuance it adds **multi-domain / SAN + wildcard** certificates, **expiry monitoring
+routed through [alerts-for-laravel](https://github.com/roundly-consulting/alerts-for-laravel)**,
+cache-aware **status reports**, **multi-tenant** connection targeting, and **macroable** services.
+The provider contract is public, so you can plug in your own backend.
+
+## Integrates with
+
+- **[alerts-for-laravel](https://github.com/roundly-consulting/alerts-for-laravel)** (hard
+  dependency) — certificate expiry and lifecycle failures (expired / revoked / failed) are surfaced
+  as first-class health checks, so they inherit alert dedup/throttle, escalation, silence windows,
+  run history, and the `/health` surface. See [Expiry monitoring](#expiry-monitoring-via-alerts).
+- **[enums-for-laravel](https://github.com/roundly-consulting/enums-for-laravel)** (hard
+  dependency) — `Enums\CertificateStatus` adopts the shared `Helpers` trait, exposing
+  `values()`, `labels()`, `options()`, `toOptions()`, `validationRule()`, `tryFromLabel()` and
+  more alongside its domain methods (`color()`, `isActive()`, `isTerminal()`, `canTransitionTo()`).
 
 ## Requirements
 
 - PHP `^8.4` with the `openssl` and `json` extensions
 - Laravel `^12.0` or `^13.0`
+- `roundly-consulting/alerts-for-laravel` and `roundly-consulting/enums-for-laravel` (pulled in
+  automatically as dependencies)
 
 ## Installation
 
@@ -79,10 +93,12 @@ The published config lives at `config/certificates.php`.
 | `status_cache.enabled` | bool | `true` | `CERTIFICATES_STATUS_CACHE` |
 | `status_cache.store` | string\|null | `null` | `CERTIFICATES_STATUS_CACHE_STORE` |
 | `status_cache.ttl` | int | `300` | `CERTIFICATES_STATUS_CACHE_TTL` |
-| `notifications.enabled` | bool | `false` | `CERTIFICATES_NOTIFY` |
-| `notifications.channels` | list | `['mail']` | — |
-| `notifications.route.mail` | string\|null | `null` | `CERTIFICATES_NOTIFY_MAIL` |
-| `notifications.notifiable` | string\|null | `null` | `CERTIFICATES_NOTIFY_NOTIFIABLE` |
+| `alerts.enabled` | bool | `false` | `CERTIFICATES_ALERTS` |
+| `alerts.notifiable` | string\|null | `null` | `CERTIFICATES_ALERTS_NOTIFIABLE` |
+| `alerts.thresholds.warning_days` | int | `30` | `CERTIFICATES_ALERTS_WARNING_DAYS` |
+| `alerts.thresholds.critical_days` | int | `7` | `CERTIFICATES_ALERTS_CRITICAL_DAYS` |
+| `alerts.channels` | list | `['mail']` | — |
+| `alerts.register_check` | bool | `false` | `CERTIFICATES_ALERTS_REGISTER_CHECK` |
 | `drivers.acme.directory` | string | Let's Encrypt prod directory | `CERTIFICATES_ACME_DIRECTORY` |
 | `drivers.acme.contact` | string\|null | `null` | `CERTIFICATES_ACME_CONTACT` |
 | `drivers.acme.account.key_type` | string | `EC` | `CERTIFICATES_ACME_KEY_TYPE` |
@@ -315,6 +331,8 @@ Listen to any of these (all carry the Eloquent `Models\Certificate`):
 - `CertificateFailed` (also a `string $reason`)
 - `CertificateRenewed`
 - `CertificateExpiring` (also an `int $daysUntilExpiry`)
+- `CertificateRevoked` (also a `?string $reason`) — dispatched by `Certificate::markRevoked()`
+- `CertificateExpired` — dispatched by `Certificate::markExpired()`
 
 ### Artisan commands
 
@@ -322,7 +340,7 @@ Listen to any of these (all carry the Eloquent `Models\Certificate`):
 php artisan certificates:issue {domain} {--driver=} {--issuer=} {--namespace=}
 php artisan certificates:list {--driver=} {--status=} {--expiring=} {--connection=}
 php artisan certificates:renew {domain?} {--threshold=} {--queue} {--connection=}
-php artisan certificates:check {--threshold=} {--notify} {--driver=} {--connection=}
+php artisan certificates:check {--threshold=} {--alert} {--driver=} {--connection=}
 php artisan certificates:prune {--days=30} {--status=} {--connection=}
 php artisan certificates:sync {--driver=} {--connection=}
 ```
@@ -331,31 +349,55 @@ php artisan certificates:sync {--driver=} {--connection=}
 dispatching `CertificateExpiring` for each. Pass `--queue` to dispatch `RenewCertificateJob` onto
 the queue named by `renewal.queue` instead of renewing inline.
 
-### Expiry monitoring & notifications
+### Expiry monitoring via alerts
 
-`certificates:check` is read-only — it scans the registry for certificates nearing expiry, fires
-the `Events\CertificateExpiring` event for each, and (opt-in) sends the
-`Notifications\CertificateExpiring` notification. It never renews.
+Certificate expiry is a **first-class health signal** routed through
+[alerts-for-laravel](https://github.com/roundly-consulting/alerts-for-laravel), so it inherits alert
+dedup/throttle, escalation, silence windows, run history, and the `/health` surface.
 
-Notifications are off by default. Enable them with `--notify` (or `notifications.enabled`) and
-configure a destination — either an on-demand route or a notifiable class:
+`Alerts\CertificateExpiryCheck` bands a certificate on two lead-time windows — a **warning** window
+(`alerts.thresholds.warning_days`, default 30) and a **critical** window
+(`alerts.thresholds.critical_days`, default 7). Anything inside critical, or a terminal
+certificate (expired / revoked / failed), maps to a failed check; the warning window maps to a
+warning; otherwise it is OK.
+
+**Schedule per-certificate monitoring** with `Certificates::monitorExpiry()`, which returns the
+alerts `PendingScheduledCheck` builder so you chain frequency, flap-debounce, channels, and
+escalation before saving:
 
 ```php
-// On-demand route (anonymous notifiable):
-'notifications' => [
-    'channels' => ['mail'],
-    'route' => ['mail' => 'ops@example.com'],
-],
+use RoundlyConsulting\Certificates\Facades\Certificates;
 
-// Or a notifiable resolved from the container:
-'notifications' => ['notifiable' => App\Models\OpsTeam::class],
+Certificates::monitorExpiry($certificate, $opsTeam)
+    ->daily()
+    ->failAfter(1)
+    ->notifyVia(['mail', 'slack'])
+    ->escalate([3 => 'oncall'])
+    ->save();
 ```
+
+The notifiable is resolved with the precedence **explicit argument → `alerts.notifiable` FQCN →
+the certificate's `certifiable` owner**. The notifiable model should adopt alerts'
+`Traits\UsesHealthChecks` and `Interfaces\HasNotifiablesForAlerts`.
+
+**Scan + alert in one command.** `certificates:check` scans the registry for expiring certificates,
+fires `Events\CertificateExpiring` for each, and — when `--alert` is passed (or `alerts.enabled` is
+true) — runs the expiry check through the alerts engine, opening one throttled, auto-recovering
+`Alert` per certificate:
 
 ```php
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::command('certificates:check --notify')->daily();
+Schedule::command('certificates:check --alert')->daily();
 ```
+
+**Lifecycle failures** (`CertificateFailed` / `CertificateRevoked` / `CertificateExpired`) also open
+an alert automatically when `alerts.enabled` is true.
+
+**Registry-wide signal.** Set `alerts.register_check` to register a single global
+`CertificateExpiryCheck` with the alerts registry — it fails when any managed certificate is inside
+the critical window. Silence expiry alerts during a planned migration with alerts'
+`Health::mute('certificate_expiry', $until)`.
 
 #### Scheduling renewals
 
