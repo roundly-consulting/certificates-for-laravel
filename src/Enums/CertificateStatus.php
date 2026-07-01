@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Enums;
 
+use RoundlyConsulting\Enums\Helpers;
+
 enum CertificateStatus: string
 {
+    use Helpers;
+
     case Pending = 'pending';
     case Requested = 'requested';
     case Issued = 'issued';
@@ -14,14 +18,6 @@ enum CertificateStatus: string
     case Failed = 'failed';
     case Expired = 'expired';
     case Revoked = 'revoked';
-
-    /**
-     * Human-readable, translatable label for the status.
-     */
-    public function label(): string
-    {
-        return (string) trans('certificates::messages.status.'.$this->value);
-    }
 
     /**
      * A colour hint for admin UIs (Tailwind-ish palette names).
