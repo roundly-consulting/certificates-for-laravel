@@ -112,7 +112,6 @@ final class CertificateManager extends Manager
         $jws = new Jws;
 
         $account = new AcmeAccount(
-            jws: $jws,
             disk: (string) ($accountConfig['disk'] ?? 'local'),
             keyPath: (string) ($accountConfig['key_path'] ?? 'acme/account.pem'),
             keyType: (string) ($accountConfig['key_type'] ?? 'EC'),
