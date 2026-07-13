@@ -20,7 +20,9 @@ Pluggable providers cover the common deployment shapes:
 - **`acme`** — a native, pure-PHP [ACME v2](https://datatracker.ietf.org/doc/html/rfc8555) client
   that obtains certificates directly from Let's Encrypt (or any ACME CA), with a pluggable
   challenge-solver contract (HTTP-01 included; DNS-01 as a documented extension point). No
-  third-party crypto or HTTP SDK — just `ext-openssl` and Laravel's HTTP client.
+  third-party crypto or HTTP SDK — the JWS, signatures, and codecs come from
+  [crypto-for-laravel](https://github.com/roundly-consulting/crypto-for-laravel), the CSR and X.509
+  handling from `ext-openssl`, and the transport from Laravel's HTTP client.
 - **`kubernetes`** — talks to the Kubernetes API directly (no SDK) to read
   [cert-manager](https://cert-manager.io) certificates and patch an Ingress with TLS hosts.
 - **`filesystem`** — reads/writes PEM material on a Laravel `Storage` disk and can self-sign for
@@ -34,6 +36,13 @@ The provider contract is public, so you can plug in your own backend.
 
 ## Integrates with
 
+- **[crypto-for-laravel](https://github.com/roundly-consulting/crypto-for-laravel)** (hard
+  dependency) — every cryptographic primitive the ACME client needs is the shared, audited one:
+  the flattened JWS each request is signed with, RS256/ES256 signing (including the DER → raw
+  `r‖s` conversion Let's Encrypt requires for ES256), account key generation and loading, strict
+  base64url, and the SHA-256 behind the RFC 7638 JWK thumbprint and the challenge key
+  authorization. What stays here is ACME protocol: the `jwk`-vs-`kid` signing mode, the account
+  kid, the challenge solvers, the CSR, and certificate parsing.
 - **[alerts-for-laravel](https://github.com/roundly-consulting/alerts-for-laravel)** (hard
   dependency) — certificate expiry and lifecycle failures (expired / revoked / failed) are surfaced
   as first-class health checks, so they inherit alert dedup/throttle, escalation, silence windows,
@@ -47,8 +56,8 @@ The provider contract is public, so you can plug in your own backend.
 
 - PHP `^8.4` with the `openssl` and `json` extensions
 - Laravel `^12.0` or `^13.0`
-- `roundly-consulting/alerts-for-laravel` and `roundly-consulting/enums-for-laravel` (pulled in
-  automatically as dependencies)
+- `roundly-consulting/crypto-for-laravel`, `roundly-consulting/alerts-for-laravel`, and
+  `roundly-consulting/enums-for-laravel` (pulled in automatically as dependencies)
 
 ## Installation
 
