@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Certificates\DataTransferObjects\AcmeChallenge;
 use RoundlyConsulting\Certificates\DataTransferObjects\AcmeOrder;
 use RoundlyConsulting\Certificates\Exceptions\AcmeException;
+use RoundlyConsulting\Crypto\Codec\Base64Url;
 
 /**
  * Low-level ACME v2 (RFC 8555) protocol client over Laravel's HTTP client.
@@ -190,7 +191,7 @@ final class AcmeClient
 
     public function finalize(string $finalizeUrl, string $csrDer): AcmeOrder
     {
-        $response = $this->signedRequest($finalizeUrl, ['csr' => $this->jws->b64($csrDer)]);
+        $response = $this->signedRequest($finalizeUrl, ['csr' => Base64Url::encode($csrDer)]);
 
         if ($response->failed()) {
             throw AcmeException::finalizeFailed((string) $response->body());
@@ -265,6 +266,8 @@ final class AcmeClient
 
         $key = $this->account->load();
 
+        // ACME embeds the account JWK only for newAccount; every later request
+        // authenticates with the account kid the server handed back.
         $body = $useJwk
             ? $this->jws->signWithJwk($protected, $payload, $key, $this->account->jwk())
             : $this->jws->signWithKid($protected, $payload, $key, (string) $this->account->kid());

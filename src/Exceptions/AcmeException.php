@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Exceptions;
 
+use Throwable;
+
 final class AcmeException extends CertificateException
 {
     public static function directoryUnavailable(string $url): self
@@ -43,9 +45,13 @@ final class AcmeException extends CertificateException
         return new self("Downloading the issued certificate failed: {$detail}");
     }
 
-    public static function signingFailed(): self
+    /**
+     * The boundary for every crypto failure raised while signing a request —
+     * the underlying CryptoException is kept as the cause, never leaked.
+     */
+    public static function signingFailed(?Throwable $previous = null): self
     {
-        return new self('Failed to sign the ACME request payload.');
+        return new self('Failed to sign the ACME request payload.', previous: $previous);
     }
 
     public static function keyGenerationFailed(): self
