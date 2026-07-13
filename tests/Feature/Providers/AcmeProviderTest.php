@@ -175,6 +175,64 @@ it('sends a well-formed, correctly signed JWS for every ACME request', function 
     'rsa account key' => ['RSA', 'RS256', 256],
 ]);
 
+it('signs the challenge response over an empty JSON object, not an empty array', function (): void {
+    $pem = Pem::selfSigned(['app.com']);
+    fakeAcme($pem['cert']);
+
+    makeProvider()->generate('generated-tls-app-com', 'app.com');
+
+    $challenge = collect(capturedJws())->first(
+        fn (array $request): bool => $request['header']['url'] === 'https://acme.test/chall/1',
+    );
+
+    // RFC 8555 §7.5.1 — the exact bytes the CA verifies the signature over must
+    // be `{}`. `[]` (PHP's default for an empty array) is rejected by Boulder,
+    // and `""` would make it a POST-as-GET rather than a response.
+    expect(Base64Url::decode($challenge['payload']))->toBe('{}')
+        ->and($challenge['payload'])->toBe(Base64Url::encode('{}'))
+        ->and($challenge['payload'])->not->toBe('');
+});
+
+it('sends an empty payload segment for every post-as-get', function (): void {
+    $pem = Pem::selfSigned(['app.com']);
+    fakeAcme($pem['cert']);
+
+    makeProvider()->generate('generated-tls-app-com', 'app.com');
+
+    // RFC 8555 §6.3 — reads (authz, order, certificate) post an empty *string*
+    // payload, which serializes to an empty segment; never `{}`.
+    $reads = collect(capturedJws())->filter(fn (array $request): bool => in_array(
+        $request['header']['url'],
+        ['https://acme.test/authz/1', 'https://acme.test/order/1', 'https://acme.test/cert/1'],
+        strict: true,
+    ));
+
+    expect($reads)->not->toBeEmpty();
+
+    $reads->each(fn (array $request) => expect($request['payload'])->toBe(''));
+});
+
+it('keeps every write payload a JSON object on the wire', function (): void {
+    $pem = Pem::selfSigned(['app.com']);
+    fakeAcme($pem['cert']);
+
+    makeProvider()->generate('generated-tls-app-com', 'app.com');
+
+    $writes = collect(capturedJws())
+        ->filter(fn (array $request): bool => $request['payload'] !== '')
+        ->map(fn (array $request): string => Base64Url::decode($request['payload']));
+
+    // Every ACME payload we send is an object — none may serialize as a JSON array.
+    [$newAccount, $newOrder, $challenge, $finalize] = $writes->values()->all();
+
+    expect($writes)->toHaveCount(4)
+        ->and($newAccount)->toBe('{"termsOfServiceAgreed":true,"contact":["mailto:ops@app.com"]}')
+        ->and($newOrder)->toBe('{"identifiers":[{"type":"dns","value":"app.com"}]}')
+        ->and($challenge)->toBe('{}')
+        // The CSR DER is not byte-stable, but its envelope is.
+        ->and($finalize)->toMatch('/^\{"csr":"[A-Za-z0-9_-]+"\}$/');
+});
+
 it('sends a jwk the CA can re-derive our thumbprint from', function (): void {
     $pem = Pem::selfSigned(['app.com']);
     fakeAcme($pem['cert']);

@@ -86,12 +86,22 @@ final class Jws
      * ACME payloads are either an already-serialized string (`''` for
      * POST-as-GET) or a JSON object to encode.
      *
+     * An empty payload array is the body-less challenge response of RFC 8555
+     * §7.5.1, which must still be an empty JSON *object*. PHP encodes `[]` as a
+     * JSON array, and Boulder rejects that as malformed — so it is pinned to
+     * `{}` here. Only an empty array is special-cased; every other payload is
+     * encoded exactly as before.
+     *
      * @param  array<string, mixed>|string  $payload
      */
     private function payload(array|string $payload): string
     {
         if (is_string($payload)) {
             return $payload;
+        }
+
+        if ($payload === []) {
+            return '{}';
         }
 
         $json = json_encode($payload, JSON_UNESCAPED_SLASHES);

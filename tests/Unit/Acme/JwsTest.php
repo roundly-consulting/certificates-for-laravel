@@ -99,6 +99,35 @@ it('encodes an empty payload as an empty segment (post-as-get)', function (): vo
     expect($jws->payload)->toBe('');
 });
 
+it('encodes an empty payload array as an empty JSON object, never an array', function (): void {
+    // RFC 8555 §7.5.1 — the challenge response is `{}`. PHP's natural encoding of
+    // `[]` is `[]`, which Boulder rejects; the signed bytes must be `{}` exactly.
+    $jws = (new Jws)->signWithKid(['nonce' => 'n', 'url' => 'u'], [], RsaKey::private(accountKeyPem('rsa')), 'kid');
+
+    expect(Base64Url::decode($jws->payload))->toBe('{}')
+        ->and($jws->payload)->toBe(Base64Url::encode('{}'))
+        ->and($jws->payload)->not->toBe('')
+        ->and(Base64Url::decode($jws->payload))->not->toBe('[]');
+});
+
+it('leaves every non-empty payload byte-identical', function (array $payload, string $json): void {
+    $jws = (new Jws)->signWithKid(['nonce' => 'n', 'url' => 'u'], $payload, RsaKey::private(accountKeyPem('rsa')), 'kid');
+
+    expect(Base64Url::decode($jws->payload))->toBe($json);
+})->with([
+    'newAccount' => [
+        ['termsOfServiceAgreed' => true, 'contact' => ['mailto:ops@app.com']],
+        '{"termsOfServiceAgreed":true,"contact":["mailto:ops@app.com"]}',
+    ],
+    // A nested JSON array (the identifiers list) must survive as an array — this
+    // is why the empty-object fix cannot be a global JSON_FORCE_OBJECT.
+    'newOrder' => [
+        ['identifiers' => [['type' => 'dns', 'value' => 'app.com'], ['type' => 'dns', 'value' => 'www.app.com']]],
+        '{"identifiers":[{"type":"dns","value":"app.com"},{"type":"dns","value":"www.app.com"}]}',
+    ],
+    'finalize' => [['csr' => 'MIIB-abc'], '{"csr":"MIIB-abc"}'],
+]);
+
 it('names the algorithm from the account key type', function (string $type, string $algorithm): void {
     $key = $type === 'ec'
         ? EcKey::private(accountKeyPem('ec'))

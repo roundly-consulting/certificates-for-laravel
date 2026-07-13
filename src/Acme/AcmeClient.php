@@ -157,6 +157,8 @@ final class AcmeClient
 
     public function respondToChallenge(AcmeChallenge $challenge): void
     {
+        // RFC 8555 §7.5.1: the response carries an empty JSON object payload —
+        // not POST-as-GET's empty string. Jws encodes `[]` as `{}` for exactly this.
         $response = $this->signedRequest($challenge->challengeUrl, []);
 
         if ($response->failed()) {
