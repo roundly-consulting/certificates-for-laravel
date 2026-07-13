@@ -3,66 +3,127 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Certificates\Acme\Jws;
+use RoundlyConsulting\Certificates\Exceptions\AcmeException;
+use RoundlyConsulting\Crypto\Codec\Base64Url;
+use RoundlyConsulting\Crypto\Jose\FlattenedJws;
+use RoundlyConsulting\Crypto\Signature\Es;
+use RoundlyConsulting\Crypto\Signature\Key\EcKey;
+use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
+use RoundlyConsulting\Crypto\Signature\Rs;
 
-it('round-trips base64url', function (): void {
-    $jws = new Jws;
-    $raw = random_bytes(40);
+/**
+ * Frozen vectors, computed from the pre-crypto implementation with the committed
+ * account keys. RSA PKCS#1 v1.5 is deterministic, so the whole flattened JWS is
+ * pinned byte-for-byte; ECDSA is not, so ES256 is verified instead.
+ */
+const RS256_PROTECTED = 'eyJub25jZSI6ImZpeGVkLW5vbmNlIiwidXJsIjoiaHR0cHM6Ly9hY21lLnRlc3Qvb3JkZXIiLCJraWQiOiJodHRwczovL2FjbWUudGVzdC9hY2N0LzEiLCJhbGciOiJSUzI1NiJ9';
+const RS256_PAYLOAD = 'eyJ0ZXJtc09mU2VydmljZUFncmVlZCI6dHJ1ZX0';
+const RS256_SIGNATURE = 'GoAuBH6LR29KHmT9b6Em9Xp2Y5u5jH1QJc0NRA_EqmmU1imC0af-cWhL3juXWqD4mcgDtvi60jN5rFl41GbUVqQD1AYrqVMMke9oN8V1w6NzuMMh1jSv8_CfeLIgJZWvBENdhbQJz-s-Mx1SQCIpDfTaZFCFmrJYBnlFX9GH2KpQ3fiaOcZ3K_127deUjrN56QrkefcUUe6cGlvzQpiue_eHepFNw_-2ZvBWONow5za1o3lWBSvfJGbqhE341P3PobyL7T2hslitCqfchjbqB0W78sbun06nU-JOyL_wLEkXopjfKOjhzERdZEItLenfrCW0kIvpBKeMIqj9xfDqxw';
 
-    $encoded = $jws->b64($raw);
+it('emits the exact flattened JWS the pre-crypto signer produced (RS256)', function (): void {
+    $jws = (new Jws)->signWithKid(
+        ['nonce' => 'fixed-nonce', 'url' => 'https://acme.test/order'],
+        ['termsOfServiceAgreed' => true],
+        RsaKey::private(accountKeyPem('rsa')),
+        'https://acme.test/acct/1',
+    );
 
-    expect($encoded)->not->toContain('+', '/', '=')
-        ->and($jws->b64decode($encoded))->toBe($raw);
+    expect($jws)->toBeInstanceOf(FlattenedJws::class)
+        ->and($jws->protected)->toBe(RS256_PROTECTED)
+        ->and($jws->payload)->toBe(RS256_PAYLOAD)
+        ->and($jws->signature)->toBe(RS256_SIGNATURE)
+        ->and($jws->jsonSerialize())->toBe([
+            'protected' => RS256_PROTECTED,
+            'payload' => RS256_PAYLOAD,
+            'signature' => RS256_SIGNATURE,
+        ]);
 });
 
-it('decodes invalid base64url to an empty string', function (): void {
-    expect((new Jws)->b64decode('@@@@invalid'))->toBe('');
+it('keeps the protected header ACME expects, with the jwk before the alg', function (): void {
+    $key = EcKey::private(accountKeyPem('ec'));
+
+    $jws = (new Jws)->signWithJwk(
+        ['nonce' => 'n', 'url' => 'https://acme.test/new-acct'],
+        ['termsOfServiceAgreed' => true],
+        $key,
+        ['crv' => 'P-256', 'kty' => 'EC', 'x' => 'xxx', 'y' => 'yyy'],
+    );
+
+    expect(Base64Url::decode($jws->protected))
+        ->toBe('{"nonce":"n","url":"https://acme.test/new-acct","jwk":{"crv":"P-256","kty":"EC","x":"xxx","y":"yyy"},"alg":"ES256"}');
 });
 
-it('signs with an RSA key (RS256) verifiable by openssl', function (): void {
-    $jws = new Jws;
-    $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048]);
+it('signs with the kid, never the jwk, once the account is registered', function (): void {
+    $jws = (new Jws)->signWithKid(
+        ['nonce' => 'n', 'url' => 'https://acme.test/order'],
+        '',
+        EcKey::private(accountKeyPem('ec')),
+        'https://acme.test/acct/1',
+    );
 
-    $jwt = $jws->signWithKid(['nonce' => 'n', 'url' => 'https://acme.test/x'], ['hello' => 'world'], $key, 'kid-1');
+    /** @var array<string, mixed> $header */
+    $header = json_decode(Base64Url::decode($jws->protected), true, 512, JSON_THROW_ON_ERROR);
 
-    expect($jwt)->toHaveKeys(['protected', 'payload', 'signature']);
-
-    $details = openssl_pkey_get_details($key);
-    $public = openssl_pkey_get_public($details['key']);
-
-    $signature = $jws->b64decode($jwt['signature']);
-    $verified = openssl_verify($jwt['protected'].'.'.$jwt['payload'], $signature, $public, OPENSSL_ALGO_SHA256);
-
-    expect($verified)->toBe(1)
-        ->and($jws->algorithm($key))->toBe('RS256');
+    expect($header)->toHaveKey('kid', 'https://acme.test/acct/1')
+        ->and($header)->not->toHaveKey('jwk');
 });
 
-it('signs with an EC key (ES256) producing a 64-byte raw signature', function (): void {
-    $jws = new Jws;
-    $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1', 'private_key_bits' => 2048]);
+it('produces a raw 64-byte r||s signature for ES256, not DER', function (): void {
+    $key = EcKey::private(accountKeyPem('ec'));
 
-    $jwt = $jws->signWithJwk(['nonce' => 'n', 'url' => 'https://acme.test/x'], ['a' => 1], $key, ['kty' => 'EC']);
+    $jws = (new Jws)->signWithJwk(['nonce' => 'n', 'url' => 'u'], ['a' => 1], $key, ['kty' => 'EC']);
 
-    $signature = $jws->b64decode($jwt['signature']);
+    $signature = Base64Url::decode($jws->signature);
 
+    // DER would start with a 0x30 SEQUENCE tag and vary in length; ACME requires
+    // the fixed-width JOSE form. Let's Encrypt rejects anything else.
     expect(strlen($signature))->toBe(64)
-        ->and($jws->algorithm($key))->toBe('ES256');
+        ->and(bin2hex($signature[0]))->not->toBe('30')
+        ->and((new Es(EcKey::public($key->publicPem())))->verify($jws->protected.'.'.$jws->payload, $signature))->toBeTrue();
 });
 
-it('handles an empty payload as post-as-get', function (): void {
-    $jws = new Jws;
-    $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048]);
+it('produces a signature the account public key verifies (RS256)', function (): void {
+    $key = RsaKey::private(accountKeyPem('rsa'));
 
-    $jwt = $jws->signWithKid(['nonce' => 'n', 'url' => 'u'], '', $key, 'kid');
+    $jws = (new Jws)->signWithKid(['nonce' => 'n', 'url' => 'u'], ['a' => 1], $key, 'kid');
 
-    expect($jwt['payload'])->toBe('');
+    $verifier = new Rs(RsaKey::public($key->publicPem()));
+
+    expect($verifier->verify($jws->protected.'.'.$jws->payload, Base64Url::decode($jws->signature)))->toBeTrue()
+        ->and($verifier->verify('tampered.'.$jws->payload, Base64Url::decode($jws->signature)))->toBeFalse();
 });
 
-it('converts a der ecdsa signature to raw r||s', function (): void {
-    $jws = new Jws;
-    $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1', 'private_key_bits' => 2048]);
+it('encodes an empty payload as an empty segment (post-as-get)', function (): void {
+    $jws = (new Jws)->signWithKid(['nonce' => 'n', 'url' => 'u'], '', RsaKey::private(accountKeyPem('rsa')), 'kid');
 
-    $der = '';
-    openssl_sign('payload', $der, $key, OPENSSL_ALGO_SHA256);
-
-    expect(strlen($jws->derToRaw($der)))->toBe(64);
+    expect($jws->payload)->toBe('');
 });
+
+it('names the algorithm from the account key type', function (string $type, string $algorithm): void {
+    $key = $type === 'ec'
+        ? EcKey::private(accountKeyPem('ec'))
+        : RsaKey::private(accountKeyPem('rsa'));
+
+    expect((new Jws)->algorithm($key))->toBe($algorithm);
+})->with([
+    'ec' => ['ec', 'ES256'],
+    'rsa' => ['rsa', 'RS256'],
+]);
+
+it('falls back to an empty object when a payload cannot be encoded', function (): void {
+    $jws = (new Jws)->signWithKid(
+        ['nonce' => 'n', 'url' => 'u'],
+        ['broken' => "\xB1\x31"], // invalid UTF-8 — json_encode returns false
+        RsaKey::private(accountKeyPem('rsa')),
+        'kid',
+    );
+
+    expect(Base64Url::decode($jws->payload))->toBe('{}');
+});
+
+it('translates a crypto failure into an AcmeException', function (): void {
+    // A public key cannot sign — crypto throws, and the boundary re-wraps it.
+    $public = RsaKey::public(RsaKey::private(accountKeyPem('rsa'))->publicPem());
+
+    (new Jws)->signWithKid(['nonce' => 'n', 'url' => 'u'], ['a' => 1], $public, 'kid');
+})->throws(AcmeException::class, 'Failed to sign the ACME request payload.');

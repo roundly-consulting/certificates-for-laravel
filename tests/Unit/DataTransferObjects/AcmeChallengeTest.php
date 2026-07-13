@@ -30,3 +30,22 @@ it('computes the dns-01 record name and value', function (): void {
 it('strips a leading wildcard from the dns record name', function (): void {
     expect(challenge('dns-01', 'app.com')->dnsRecordName())->toBe('_acme-challenge.app.com');
 });
+
+/**
+ * Frozen vector, computed from the pre-crypto inline base64url(sha256(...)).
+ * The CA compares the published TXT record against exactly this string, so it
+ * must never move: a one-byte drift fails every certificate issuance, and it
+ * fails at the CA, not here.
+ */
+it('digests the key authorization to the exact dns-01 record value', function (): void {
+    $challenge = new AcmeChallenge(
+        type: 'dns-01',
+        domain: 'app.com',
+        token: 'tok3n-fixed',
+        keyAuthorization: 'tok3n-fixed.thumbprint-fixed',
+        authorizationUrl: 'https://acme.test/authz/1',
+        challengeUrl: 'https://acme.test/chall/1',
+    );
+
+    expect($challenge->dnsRecordValue())->toBe('VHRcnUSW8dj_kLRqX4CKkWhMhzGUOnydhLWY4_AfZVg');
+});

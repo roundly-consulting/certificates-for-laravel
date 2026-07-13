@@ -15,6 +15,12 @@ use RoundlyConsulting\Certificates\Providers\AcmeProvider;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\X509Parser;
 use RoundlyConsulting\Certificates\Tests\Helpers\Pem;
+use RoundlyConsulting\Crypto\Codec\Base64Url;
+use RoundlyConsulting\Crypto\Hash\Digest;
+use RoundlyConsulting\Crypto\Signature\Es;
+use RoundlyConsulting\Crypto\Signature\Key\EcKey;
+use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
+use RoundlyConsulting\Crypto\Signature\Rs;
 
 const DIR = 'https://acme.test/directory';
 
@@ -22,10 +28,10 @@ beforeEach(function (): void {
     Storage::fake('local');
 });
 
-function makeProvider(): AcmeProvider
+function makeProvider(string $keyType = 'EC'): AcmeProvider
 {
     $jws = new Jws;
-    $account = new AcmeAccount($jws, disk: 'local', keyPath: 'acme/account.pem', keyType: 'EC');
+    $account = new AcmeAccount(disk: 'local', keyPath: 'acme/account.pem', keyType: $keyType);
 
     $client = new AcmeClient(
         jws: $jws,
@@ -102,6 +108,112 @@ function fakeAcme(string $certPem, array $authStatuses = ['valid'], string $orde
         'https://acme.test/cert/1' => Http::response($certPem, 200, $headers),
     ]);
 }
+
+/**
+ * Every JWS the faked CA received, decoded.
+ *
+ * @return list<array{header: array<string, mixed>, payload: string, signature: string, signingInput: string}>
+ */
+function capturedJws(): array
+{
+    $requests = [];
+
+    foreach (Http::recorded() as [$request]) {
+        if ($request->method() !== 'POST') {
+            continue;
+        }
+
+        /** @var array{protected: string, payload: string, signature: string} $body */
+        $body = json_decode($request->body(), true, 512, JSON_THROW_ON_ERROR);
+
+        /** @var array<string, mixed> $header */
+        $header = json_decode(Base64Url::decode($body['protected']), true, 512, JSON_THROW_ON_ERROR);
+
+        $requests[] = [
+            'header' => $header,
+            'payload' => $body['payload'],
+            'signature' => Base64Url::decode($body['signature']),
+            'signingInput' => $body['protected'].'.'.$body['payload'],
+        ];
+    }
+
+    return $requests;
+}
+
+it('sends a well-formed, correctly signed JWS for every ACME request', function (string $keyType, string $algorithm, int $signatureBytes): void {
+    $pem = Pem::selfSigned(['app.com']);
+    fakeAcme($pem['cert']);
+
+    makeProvider($keyType)->generate('generated-tls-app-com', 'app.com');
+
+    $privatePem = (string) Storage::disk('local')->get('acme/account.pem');
+
+    $verifier = $keyType === 'EC'
+        ? new Es(EcKey::public(EcKey::private($privatePem)->publicPem()))
+        : new Rs(RsaKey::public(RsaKey::private($privatePem)->publicPem()));
+
+    $requests = capturedJws();
+
+    expect($requests)->not->toBeEmpty();
+
+    foreach ($requests as $index => $request) {
+        expect($request['header']['alg'])->toBe($algorithm)
+            ->and($request['header'])->toHaveKeys(['nonce', 'url'])
+            ->and(strlen($request['signature']))->toBe($signatureBytes)
+            ->and($verifier->verify($request['signingInput'], $request['signature']))->toBeTrue();
+
+        // newAccount is the only request signed with the embedded JWK; every
+        // later request is authenticated with the account kid.
+        $index === 0
+            ? expect($request['header'])->toHaveKey('jwk')->and($request['header'])->not->toHaveKey('kid')
+            : expect($request['header'])->toHaveKey('kid', 'https://acme.test/acct/1')->and($request['header'])->not->toHaveKey('jwk');
+    }
+})->with([
+    // ES256 must be the raw r||s form (64 bytes), never DER — Let's Encrypt
+    // rejects a DER signature outright.
+    'ec account key' => ['EC', 'ES256', 64],
+    'rsa account key' => ['RSA', 'RS256', 256],
+]);
+
+it('sends a jwk the CA can re-derive our thumbprint from', function (): void {
+    $pem = Pem::selfSigned(['app.com']);
+    fakeAcme($pem['cert']);
+
+    makeProvider()->generate('generated-tls-app-com', 'app.com');
+
+    $newAccount = capturedJws()[0];
+
+    /** @var array<string, string> $jwk */
+    $jwk = $newAccount['header']['jwk'];
+    ksort($jwk);
+
+    $thumbprint = Base64Url::encode(
+        (new Digest)->raw((string) json_encode($jwk, JSON_UNESCAPED_SLASHES)),
+    );
+
+    // This is exactly what the CA does with the JWK we posted; it must equal the
+    // thumbprint we put in every key authorization.
+    $account = new AcmeAccount(disk: 'local', keyPath: 'acme/account.pem', keyType: 'EC');
+
+    expect($thumbprint)->toBe($account->thumbprint());
+});
+
+it('base64url-encodes the CSR DER it finalizes with', function (): void {
+    $pem = Pem::selfSigned(['app.com']);
+    fakeAcme($pem['cert']);
+
+    makeProvider()->generate('generated-tls-app-com', 'app.com');
+
+    $finalize = collect(capturedJws())->first(
+        fn (array $request): bool => $request['header']['url'] === 'https://acme.test/finalize/1',
+    );
+
+    /** @var array{csr: string} $payload */
+    $payload = json_decode(Base64Url::decode($finalize['payload']), true, 512, JSON_THROW_ON_ERROR);
+
+    // A DER CertificationRequest is an ASN.1 SEQUENCE (0x30).
+    expect(bin2hex(Base64Url::decode($payload['csr'])[0]))->toBe('30');
+});
 
 it('issues a certificate through the full ACME flow', function (): void {
     $pem = Pem::selfSigned(['app.com'], days: 60);
