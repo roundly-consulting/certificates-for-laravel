@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\DataTransferObjects;
 
+use RoundlyConsulting\Crypto\Codec\Base64Url;
+use RoundlyConsulting\Crypto\Hash\Digest;
+
 final readonly class AcmeChallenge
 {
     public function __construct(
@@ -32,10 +35,13 @@ final readonly class AcmeChallenge
     }
 
     /**
-     * For dns-01: the TXT record value to publish.
+     * For dns-01: the TXT record value to publish — base64url(SHA-256(key
+     * authorization)), per RFC 8555 §8.4. This is the exact string the CA
+     * compares the published TXT record against, so it is pinned by a frozen
+     * test vector.
      */
     public function dnsRecordValue(): string
     {
-        return rtrim(strtr(base64_encode(hash('sha256', $this->keyAuthorization, true)), '+/', '-_'), '=');
+        return Base64Url::encode((new Digest)->raw($this->keyAuthorization));
     }
 }
