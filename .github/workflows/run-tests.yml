@@ -41,5 +41,8 @@ jobs:
       - name: List installed dependencies
         run: composer show -D
 
+      - name: Audit dependencies
+        run: composer audit
+
       - name: Execute tests
-        run: vendor/bin/pest --coverage --min=90
+        run: vendor/bin/pest --ci --coverage --min=95
