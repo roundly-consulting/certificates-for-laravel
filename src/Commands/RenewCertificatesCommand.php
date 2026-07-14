@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Certificates\Actions\RenewCertificateAction;
 use RoundlyConsulting\Certificates\Events\CertificateExpiring;
 use RoundlyConsulting\Certificates\Jobs\RenewCertificateJob;
-use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 final class RenewCertificatesCommand extends Command
 {
@@ -23,7 +23,7 @@ final class RenewCertificatesCommand extends Command
             ? $connection
             : null;
 
-        $query = Certificate::on($connection);
+        $query = CertificateModel::class()::on($connection);
 
         if (is_string($domain = $this->argument('domain')) && $domain !== '') {
             $query->forDomain($domain);

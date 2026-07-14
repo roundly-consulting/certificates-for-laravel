@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 /**
  * @phpstan-require-extends Model
@@ -21,10 +22,7 @@ trait HasCertificates
      */
     public function certificates(): MorphMany
     {
-        /** @var class-string<Certificate> $model */
-        $model = config('certificates.model', Certificate::class);
-
-        return $this->morphMany($model, 'certifiable');
+        return $this->morphMany(CertificateModel::class(), 'certifiable');
     }
 
     public function requestCertificate(string $domain, ?string $driver = null): Certificate

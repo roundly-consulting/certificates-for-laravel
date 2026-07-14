@@ -38,8 +38,11 @@ use RoundlyConsulting\Certificates\Events\CertificateRevoked;
  * @property CarbonImmutable|null $updated_at
  * @property CarbonImmutable|null $deleted_at
  * @property-read Model|null $certifiable
+ *
+ * Deliberately not final: `certificates.model` documents swapping in a subclass
+ * of this model, which final would make impossible.
  */
-final class Certificate extends Model
+class Certificate extends Model
 {
     /** @use HasFactory<CertificateFactory> */
     use HasFactory;

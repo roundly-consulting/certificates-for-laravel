@@ -23,6 +23,7 @@ use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateBuilder;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 class CertificateService
@@ -146,7 +147,7 @@ class CertificateService
             return null;
         }
 
-        return Certificate::on($this->connection)
+        return CertificateModel::class()::on($this->connection)
             ->forDomain($domain)
             ->when($driver !== null, fn ($query) => $query->forDriver($driver))
             ->latest('id')

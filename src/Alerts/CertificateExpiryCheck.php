@@ -10,6 +10,7 @@ use RoundlyConsulting\Alerts\CheckResult;
 use RoundlyConsulting\Alerts\HealthCheck;
 use RoundlyConsulting\Alerts\Notifications\HealthCheckFailedNotification;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 /**
  * An alerts health check that turns certificate expiry into a monitored signal.
@@ -61,7 +62,7 @@ final class CertificateExpiryCheck extends Check
 
     private function checkCertificate(int $certificateId): CheckResult
     {
-        $certificate = Certificate::query()->find($certificateId);
+        $certificate = CertificateModel::class()::query()->find($certificateId);
 
         if (! $certificate instanceof Certificate) {
             return CheckResult::skipped(
@@ -81,7 +82,7 @@ final class CertificateExpiryCheck extends Check
         $affected = [];
         $worst = CheckResult::ok((string) trans('certificates::messages.alerts.registry_ok'));
 
-        Certificate::query()
+        CertificateModel::class()::query()
             ->active()
             ->where(function ($query): void {
                 $query->whereNull('expires_at')

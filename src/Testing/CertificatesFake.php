@@ -12,6 +12,7 @@ use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CertificateBuilder;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 /**
@@ -61,7 +62,8 @@ final class CertificatesFake extends CertificateService
     {
         $this->requested[] = $data->domain;
 
-        $certificate = new Certificate;
+        $model = CertificateModel::class();
+        $certificate = new $model;
         $certificate->forceFill([
             'name' => $this->certificateName($data->domain),
             'domain' => $data->domain,

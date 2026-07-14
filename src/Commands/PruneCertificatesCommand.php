@@ -7,7 +7,7 @@ namespace RoundlyConsulting\Certificates\Commands;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
-use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 final class PruneCertificatesCommand extends Command
 {
@@ -23,7 +23,7 @@ final class PruneCertificatesCommand extends Command
 
         $days = is_numeric($this->option('days')) ? (int) $this->option('days') : 30;
 
-        $query = Certificate::on($connection)
+        $query = CertificateModel::class()::on($connection)
             ->where('updated_at', '<=', CarbonImmutable::now()->subDays($days));
 
         if (is_string($status = $this->option('status')) && $status !== '') {

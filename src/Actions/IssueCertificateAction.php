@@ -20,6 +20,7 @@ use RoundlyConsulting\Certificates\Events\CertificateRequested;
 use RoundlyConsulting\Certificates\Exceptions\InvalidDomainException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Rules\ValidDomain;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 use Throwable;
 
 final class IssueCertificateAction
@@ -78,7 +79,7 @@ final class IssueCertificateAction
 
     private function upsertCertificate(string $name, IssueCertificateData $data, string $driver, ?string $connection): Certificate
     {
-        $model = Certificate::on($connection)->firstOrNew([
+        $model = CertificateModel::class()::on($connection)->firstOrNew([
             'driver' => $driver,
             'name' => $name,
         ]);

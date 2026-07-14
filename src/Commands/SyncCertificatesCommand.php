@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 use RoundlyConsulting\Certificates\CertificateManager;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
-use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 final class SyncCertificatesCommand extends Command
 {
@@ -31,7 +31,7 @@ final class SyncCertificatesCommand extends Command
         $count = 0;
 
         foreach ($provider->get() as $remote) {
-            $model = Certificate::on($connection)->firstOrNew([
+            $model = CertificateModel::class()::on($connection)->firstOrNew([
                 'driver' => $driverName,
                 'name' => $remote->name,
             ]);

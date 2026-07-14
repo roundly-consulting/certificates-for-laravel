@@ -12,6 +12,7 @@ use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
 use RoundlyConsulting\Certificates\Alerts\ExpiryNotifiableResolver;
 use RoundlyConsulting\Certificates\Events\CertificateExpiring as CertificateExpiringEvent;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 /**
  * Read-only monitoring: scans the registry for certificates nearing expiry,
@@ -36,7 +37,7 @@ final class CheckCertificatesCommand extends Command
             ? (int) $this->option('threshold')
             : (int) config('certificates.renewal.threshold_days', 21);
 
-        $query = Certificate::on($connection)->expiring($threshold);
+        $query = CertificateModel::class()::on($connection)->expiring($threshold);
 
         if (is_string($driver = $this->option('driver')) && $driver !== '') {
             $query->forDriver($driver);

@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Certificates\Commands;
 
 use Illuminate\Console\Command;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 final class ListCertificatesCommand extends Command
 {
@@ -19,7 +20,7 @@ final class ListCertificatesCommand extends Command
             ? $connection
             : null;
 
-        $query = Certificate::on($connection);
+        $query = CertificateModel::class()::on($connection);
 
         if (is_string($driver = $this->option('driver')) && $driver !== '') {
             $query->forDriver($driver);
