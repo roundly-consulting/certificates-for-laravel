@@ -62,8 +62,9 @@ The provider contract is public, so you can plug in your own backend.
 
 - PHP `^8.4` with the `openssl` and `json` extensions
 - Laravel `^12.0` or `^13.0`
-- `roundly-consulting/crypto-for-laravel`, `roundly-consulting/alerts-for-laravel`, and
-  `roundly-consulting/enums-for-laravel` (pulled in automatically as dependencies)
+- `roundly-consulting/crypto-for-laravel`, `roundly-consulting/alerts-for-laravel`,
+  `roundly-consulting/enums-for-laravel`, and `roundly-consulting/package-toolkit-for-laravel`
+  (pulled in automatically as dependencies)
 
 ## Installation
 
@@ -73,13 +74,17 @@ composer require roundly-consulting/certificates-for-laravel
 
 The service provider and the `Certificates` facade alias are auto-discovered.
 
-Publish and run the migration to enable the local registry (recommended — without it the package
-still issues certificates, but records nothing and cannot track expiry):
+Publish and run the migrations to enable the local registry (recommended — without it the package
+still issues certificates, but records nothing and cannot track expiry). The package's migrations
+are **not loaded automatically**: publish them first, then migrate.
 
 ```bash
 php artisan vendor:publish --tag="certificates-migrations"
 php artisan migrate
 ```
+
+They land in your `database/migrations` as timestamped files you own, so they order against your
+own migrations and republishing overwrites in place instead of duplicating them.
 
 Optionally publish the config and translations:
 
