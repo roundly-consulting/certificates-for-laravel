@@ -6,7 +6,6 @@ namespace RoundlyConsulting\Certificates;
 
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Alerts\Facades\Health;
 use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
 use RoundlyConsulting\Certificates\ChallengeSolvers\HttpChallengeSolver;
@@ -26,12 +25,56 @@ use RoundlyConsulting\Certificates\Listeners\AlertOnCertificateLifecycleFailure;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\PackageToolkit\Package;
+use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 
-final class CertificatesServiceProvider extends ServiceProvider
+final class CertificatesServiceProvider extends PackageServiceProvider
 {
+    public function configurePackage(Package $package): void
+    {
+        $package
+            ->name('certificates')
+            ->hasConfigFile()
+            ->hasMigrations()
+            ->hasTranslations()
+            ->hasCommands([
+                IssueCertificateCommand::class,
+                ListCertificatesCommand::class,
+                RenewCertificatesCommand::class,
+                PruneCertificatesCommand::class,
+                SyncCertificatesCommand::class,
+                CheckCertificatesCommand::class,
+            ])
+            // This package's config holds ACME account key material, CA
+            // directory URLs, Kubernetes bearer tokens and the paths they are
+            // mounted at. The section therefore reports *presence* and shape —
+            // never a secret, a path to one, a destination, or a host topology
+            // name (namespace, ingress, queue, cache store, connection).
+            ->contributesToAbout(static fn (): array => [
+                'Driver' => self::defaultDriver(),
+                'Model' => class_basename(CertificateModel::class()),
+                'Table' => self::table(),
+                'Connection' => self::presence('certificates.connection', 'DEFAULT'),
+                'Renewal' => self::renewal(),
+                'Renewal queue' => self::presence('certificates.renewal.queue', 'DEFAULT'),
+                'Status cache' => self::statusCache(),
+                'Alerts' => self::alerts(),
+                'Expiry check' => config('certificates.alerts.register_check') === true ? 'REGISTERED' : 'OFF',
+                'Alert notifiable' => self::presence('certificates.alerts.notifiable', 'OWNER'),
+                'Kubernetes API' => self::presence('certificates.drivers.kubernetes.base_url', 'MISSING'),
+                'Kubernetes token' => self::kubernetesToken(),
+                'Kubernetes CA' => self::presence('certificates.drivers.kubernetes.ca_path', 'UNVERIFIED'),
+                'ACME directory' => self::presence('certificates.drivers.acme.directory', 'MISSING'),
+                'ACME contact' => self::presence('certificates.drivers.acme.contact', 'MISSING'),
+                'ACME account key' => self::acmeAccountKey(),
+                'ACME challenge' => self::acmeChallenge(),
+            ]);
+    }
+
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/certificates.php', 'certificates');
+        parent::register();
 
         $this->app->singleton(
             CertificateManager::class,
@@ -86,8 +129,7 @@ final class CertificatesServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-        $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'certificates');
+        parent::boot();
 
         Event::listen(
             [CertificateFailed::class, CertificateRevoked::class, CertificateExpired::class],
@@ -97,28 +139,103 @@ final class CertificatesServiceProvider extends ServiceProvider
         if (config('certificates.alerts.register_check', false) === true) {
             Health::check(new CertificateExpiryCheck);
         }
+    }
 
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                IssueCertificateCommand::class,
-                ListCertificatesCommand::class,
-                RenewCertificatesCommand::class,
-                PruneCertificatesCommand::class,
-                SyncCertificatesCommand::class,
-                CheckCertificatesCommand::class,
-            ]);
+    /**
+     * Whether a config key holds a non-empty value — never the value itself.
+     */
+    private static function presence(string $key, string $absent): string
+    {
+        $value = config($key);
 
-            $this->publishes([
-                __DIR__.'/../config/certificates.php' => config_path('certificates.php'),
-            ], 'certificates-config');
+        return is_string($value) && $value !== '' ? 'SET' : $absent;
+    }
 
-            $this->publishes([
-                __DIR__.'/../database/migrations' => database_path('migrations'),
-            ], 'certificates-migrations');
+    private static function defaultDriver(): string
+    {
+        $driver = config('certificates.default');
 
-            $this->publishes([
-                __DIR__.'/../resources/lang' => $this->app->langPath('vendor/certificates'),
-            ], 'certificates-translations');
+        return is_string($driver) && $driver !== '' ? $driver : 'kubernetes';
+    }
+
+    private static function table(): string
+    {
+        $table = config('certificates.table');
+
+        return is_string($table) && $table !== '' ? $table : 'certificates';
+    }
+
+    private static function renewal(): string
+    {
+        $days = config('certificates.renewal.threshold_days');
+
+        return is_int($days) ? $days.' days before expiry' : 'NEVER';
+    }
+
+    private static function statusCache(): string
+    {
+        if (config('certificates.status_cache.enabled') !== true) {
+            return 'OFF';
         }
+
+        $ttl = config('certificates.status_cache.ttl');
+        $store = self::presence('certificates.status_cache.store', 'DEFAULT');
+
+        return sprintf('ON (%ss, store %s)', is_int($ttl) ? $ttl : 0, $store);
+    }
+
+    private static function alerts(): string
+    {
+        if (config('certificates.alerts.enabled') !== true) {
+            return 'OFF';
+        }
+
+        $warning = config('certificates.alerts.thresholds.warning_days');
+        $critical = config('certificates.alerts.thresholds.critical_days');
+
+        return sprintf(
+            'ON (warn %sd, critical %sd)',
+            is_int($warning) ? $warning : 0,
+            is_int($critical) ? $critical : 0,
+        );
+    }
+
+    /**
+     * The bearer token is a live cluster credential and its token_path names the
+     * file it is mounted at, so only the sourcing mode is reported.
+     */
+    private static function kubernetesToken(): string
+    {
+        if (self::presence('certificates.drivers.kubernetes.token', 'MISSING') === 'SET') {
+            return 'INLINE';
+        }
+
+        return self::presence('certificates.drivers.kubernetes.token_path', 'MISSING') === 'SET'
+            ? 'FILE'
+            : 'MISSING';
+    }
+
+    /**
+     * The account key is the ACME identity itself; only its type and whether the
+     * package may register it are reported — never the disk or the key path.
+     */
+    private static function acmeAccountKey(): string
+    {
+        $type = config('certificates.drivers.acme.account.key_type');
+        $autoRegister = config('certificates.drivers.acme.account.auto_register') === true;
+
+        return sprintf(
+            '%s (auto-register %s)',
+            is_string($type) && $type !== '' ? $type : 'EC',
+            $autoRegister ? 'ON' : 'OFF',
+        );
+    }
+
+    private static function acmeChallenge(): string
+    {
+        $type = config('certificates.drivers.acme.challenge_type');
+        $solver = self::presence('certificates.drivers.acme.solver', 'DEFAULT') === 'SET' ? 'CUSTOM' : 'DEFAULT';
+
+        return sprintf('%s (solver %s)', is_string($type) && $type !== '' ? $type : 'http-01', $solver);
     }
 }

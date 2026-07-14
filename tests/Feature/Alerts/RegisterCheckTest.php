@@ -13,7 +13,11 @@ it('does not register the registry-wide check by default', function (): void {
 it('registers the registry-wide check when register_check is enabled', function (): void {
     config()->set('certificates.alerts.register_check', true);
 
-    (new CertificatesServiceProvider($this->app))->boot();
+    // The toolkit builds the package declaration in register(), so a provider
+    // booted by hand must be registered first.
+    $provider = new CertificatesServiceProvider($this->app);
+    $provider->register();
+    $provider->boot();
 
     expect(Health::find('certificate_expiry'))->toBeInstanceOf(CertificateExpiryCheck::class);
 });
