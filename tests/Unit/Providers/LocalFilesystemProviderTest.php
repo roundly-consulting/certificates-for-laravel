@@ -10,7 +10,6 @@ use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Providers\LocalFilesystemProvider;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
-use RoundlyConsulting\Certificates\Tests\Helpers\Pem;
 
 beforeEach(function (): void {
     Storage::fake('local');
@@ -69,8 +68,8 @@ it('does nothing when not self-signing and no material is present', function ():
 });
 
 it('reads imported material and lists it', function (): void {
-    $pem = Pem::selfSigned(['imported.com']);
-    fsStore()->put('tls-imported', new StoredCertificate($pem['cert'], $pem['key']));
+    $certificate = selfSignedCertificate(['imported.com']);
+    fsStore()->put('tls-imported', new StoredCertificate($certificate->leaf()->pem(), $certificate->leafKey->privatePem()));
 
     $provider = importOnlyProvider();
 
@@ -80,8 +79,8 @@ it('reads imported material and lists it', function (): void {
 });
 
 it('reports an expired certificate', function (): void {
-    $pem = Pem::selfSigned(['old.com'], days: 1);
-    fsStore()->put('tls-old', new StoredCertificate($pem['cert'], $pem['key']));
+    $certificate = selfSignedCertificate(['old.com'], days: 1);
+    fsStore()->put('tls-old', new StoredCertificate($certificate->leaf()->pem(), $certificate->leafKey->privatePem()));
 
     // Advance the clock past the (1-day) validity window.
     CarbonImmutable::setTestNow(CarbonImmutable::now()->addDays(3));

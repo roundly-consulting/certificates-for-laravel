@@ -3,8 +3,30 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Certificates\Tests\TestCase;
+use RoundlyConsulting\Crypto\Testing\TestCertificateChain;
+use RoundlyConsulting\Crypto\Testing\TestCertificates;
 
 uses(TestCase::class)->in(__DIR__);
+
+/**
+ * A throwaway self-signed certificate (with SANs) and its private key.
+ *
+ * Minting one by hand means an `openssl.cnf` carrying the sections OpenSSL
+ * needs, which many hosts' default config lacks — crypto's TestCertificates
+ * writes its own, so the fixture is one call here rather than a helper class of
+ * our own.
+ *
+ * @param  list<string>  $domains
+ */
+function selfSignedCertificate(array $domains, int $days = 90): TestCertificateChain
+{
+    return TestCertificates::selfSigned(
+        dnsNames: $domains,
+        keyType: 'RSA',
+        days: $days,
+        commonName: $domains[0],
+    );
+}
 
 /**
  * A committed ACME account key PEM (`ec` or `rsa`).

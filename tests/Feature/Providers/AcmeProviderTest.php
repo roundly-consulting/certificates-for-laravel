@@ -14,7 +14,6 @@ use RoundlyConsulting\Certificates\Exceptions\AcmeException;
 use RoundlyConsulting\Certificates\Providers\AcmeProvider;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
-use RoundlyConsulting\Certificates\Tests\Helpers\Pem;
 use RoundlyConsulting\Crypto\Codec\Base64Url;
 use RoundlyConsulting\Crypto\Hash\Digest;
 use RoundlyConsulting\Crypto\Signature\Es;
@@ -150,8 +149,7 @@ function seedAccountKey(string $curve): void
 }
 
 it('sends a well-formed, correctly signed JWS for every ACME request', function (string $keyType, ?string $curve, string $algorithm, int $signatureBytes): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
 
     if ($curve !== null) {
         seedAccountKey($curve);
@@ -193,8 +191,7 @@ it('sends a well-formed, correctly signed JWS for every ACME request', function 
 ]);
 
 it('embeds a jwk describing the P-384 account key it actually signs with', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
     seedAccountKey('P-384');
 
     makeProvider('EC')->generate('generated-tls-app-com', 'app.com');
@@ -212,8 +209,7 @@ it('embeds a jwk describing the P-384 account key it actually signs with', funct
 });
 
 it('signs the challenge response over an empty JSON object, not an empty array', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 
@@ -230,8 +226,7 @@ it('signs the challenge response over an empty JSON object, not an empty array',
 });
 
 it('sends an empty payload segment for every post-as-get', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 
@@ -249,8 +244,7 @@ it('sends an empty payload segment for every post-as-get', function (): void {
 });
 
 it('keeps every write payload a JSON object on the wire', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 
@@ -270,8 +264,7 @@ it('keeps every write payload a JSON object on the wire', function (): void {
 });
 
 it('sends a jwk the CA can re-derive our thumbprint from', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 
@@ -293,8 +286,7 @@ it('sends a jwk the CA can re-derive our thumbprint from', function (): void {
 });
 
 it('base64url-encodes the CSR DER it finalizes with', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 
@@ -310,8 +302,7 @@ it('base64url-encodes the CSR DER it finalizes with', function (): void {
 });
 
 it('issues a certificate through the full ACME flow', function (): void {
-    $pem = Pem::selfSigned(['app.com'], days: 60);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'], days: 60)->leaf()->pem());
 
     $provider = makeProvider();
     $provider->generate('generated-tls-app-com', 'app.com');
@@ -328,8 +319,7 @@ it('issues a certificate through the full ACME flow', function (): void {
 });
 
 it('lists issued certificates', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
 
     $provider = makeProvider();
     $provider->generate('generated-tls-app-com', 'app.com');
@@ -339,8 +329,7 @@ it('lists issued certificates', function (): void {
 });
 
 it('persists the account kid for reuse', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem());
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 
@@ -359,15 +348,13 @@ it('reports not-existing when nothing is stored', function (): void {
 });
 
 it('throws when a challenge becomes invalid', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert'], authStatuses: ['invalid']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem(), authStatuses: ['invalid']);
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 })->throws(AcmeException::class);
 
 it('polls until the authorization is valid', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert'], authStatuses: ['pending', 'valid']);
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem(), authStatuses: ['pending', 'valid']);
 
     $provider = makeProvider();
     $provider->generate('generated-tls-app-com', 'app.com');
@@ -376,8 +363,7 @@ it('polls until the authorization is valid', function (): void {
 });
 
 it('throws when the order becomes invalid at finalization', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
-    fakeAcme($pem['cert'], orderStatus: 'invalid');
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem(), orderStatus: 'invalid');
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 })->throws(AcmeException::class);
@@ -389,7 +375,7 @@ it('throws when the directory is unavailable', function (): void {
 })->throws(AcmeException::class);
 
 it('retries once on a badNonce error', function (): void {
-    $pem = Pem::selfSigned(['app.com']);
+    $certificatePem = selfSignedCertificate(['app.com'])->leaf()->pem();
     $headers = ['Replay-Nonce' => 'nonce-1'];
 
     Http::fake([
@@ -425,7 +411,7 @@ it('retries once on a badNonce error', function (): void {
             'finalize' => 'https://acme.test/finalize/1',
             'certificate' => 'https://acme.test/cert/1',
         ], 200, $headers),
-        'https://acme.test/cert/1' => Http::response($pem['cert'], 200, $headers),
+        'https://acme.test/cert/1' => Http::response($certificatePem, 200, $headers),
     ]);
 
     $provider = makeProvider();

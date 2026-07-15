@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
-use RoundlyConsulting\Certificates\Tests\Helpers\Pem;
 
 /**
  * Frozen ParsedCertificate vectors for the committed `leaf` fixture, computed
@@ -61,9 +60,9 @@ it('falls back to the issuer organization when the issuer carries no common name
 });
 
 it('parses a self-signed certificate', function (): void {
-    $material = Pem::selfSigned(['example.com', 'www.example.com'], days: 30);
+    $certificate = selfSignedCertificate(['example.com', 'www.example.com'], days: 30);
 
-    $parsed = (new CertificateMapper)->parse($material['cert']);
+    $parsed = (new CertificateMapper)->parse($certificate->leaf()->pem());
 
     expect($parsed->commonName)->toBe('example.com')
         ->and($parsed->subjectAltNames)->toContain('example.com', 'www.example.com')
