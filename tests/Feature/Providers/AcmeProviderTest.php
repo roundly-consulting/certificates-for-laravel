@@ -140,9 +140,22 @@ function capturedJws(): array
     return $requests;
 }
 
-it('sends a well-formed, correctly signed JWS for every ACME request', function (string $keyType, string $algorithm, int $signatureBytes): void {
+/**
+ * Seed the account disk with an EC key on a specific curve, so the flow runs
+ * against a key the provider would not have generated itself.
+ */
+function seedAccountKey(string $curve): void
+{
+    Storage::disk('local')->put('acme/account.pem', EcKey::generate($curve)->privatePem());
+}
+
+it('sends a well-formed, correctly signed JWS for every ACME request', function (string $keyType, ?string $curve, string $algorithm, int $signatureBytes): void {
     $pem = Pem::selfSigned(['app.com']);
     fakeAcme($pem['cert']);
+
+    if ($curve !== null) {
+        seedAccountKey($curve);
+    }
 
     makeProvider($keyType)->generate('generated-tls-app-com', 'app.com');
 
@@ -168,12 +181,35 @@ it('sends a well-formed, correctly signed JWS for every ACME request', function 
             ? expect($request['header'])->toHaveKey('jwk')->and($request['header'])->not->toHaveKey('kid')
             : expect($request['header'])->toHaveKey('kid', 'https://acme.test/acct/1')->and($request['header'])->not->toHaveKey('jwk');
     }
+
+    // The certificate was issued: the whole order ran on this key type.
+    Storage::disk('local')->assertExists('certificates/generated-tls-app-com/certificate.pem');
 })->with([
-    // ES256 must be the raw r||s form (64 bytes), never DER — Let's Encrypt
-    // rejects a DER signature outright.
-    'ec account key' => ['EC', 'ES256', 64],
-    'rsa account key' => ['RSA', 'RS256', 256],
+    // ES256/ES384 must be the raw r||s form (64/96 bytes), never DER — Let's
+    // Encrypt rejects a DER signature outright.
+    'ec p-256 account key' => ['EC', null, 'ES256', 64],
+    'ec p-384 account key' => ['EC', 'P-384', 'ES384', 96],
+    'rsa account key' => ['RSA', null, 'RS256', 256],
 ]);
+
+it('embeds a jwk describing the P-384 account key it actually signs with', function (): void {
+    $pem = Pem::selfSigned(['app.com']);
+    fakeAcme($pem['cert']);
+    seedAccountKey('P-384');
+
+    makeProvider('EC')->generate('generated-tls-app-com', 'app.com');
+
+    /** @var array{crv: string, kty: string, x: string, y: string} $jwk */
+    $jwk = capturedJws()[0]['header']['jwk'];
+
+    // The header's curve, its coordinate width and the alg all come from the
+    // key. A P-384 key advertised as P-256 thumbprints to something the CA
+    // cannot re-derive, and every key authorization silently fails.
+    expect($jwk['crv'])->toBe('P-384')
+        ->and(strlen(Base64Url::decode($jwk['x'])))->toBe(48)
+        ->and(strlen(Base64Url::decode($jwk['y'])))->toBe(48)
+        ->and(capturedJws()[0]['header']['alg'])->toBe('ES384');
+});
 
 it('signs the challenge response over an empty JSON object, not an empty array', function (): void {
     $pem = Pem::selfSigned(['app.com']);

@@ -23,6 +23,9 @@ use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
  */
 final class AcmeAccount
 {
+    /** Let's Encrypt accepts a P-256 or a P-384 EC account key; P-256 is the default. */
+    private const array CURVES = ['P-256', 'P-384'];
+
     private EcKey|RsaKey|null $key = null;
 
     private ?Jwk $jwk = null;
@@ -151,7 +154,10 @@ final class AcmeAccount
         try {
             $key = EcKey::private($pem);
 
-            return $key->curve === 'P-256' ? $key : throw AcmeException::unexpectedKey();
+            // A curve the CA does not accept is a misconfiguration; the JWK
+            // itself describes whichever of the two this is, and signs with the
+            // matching alg (ES256 / ES384).
+            return in_array($key->curve, self::CURVES, true) ? $key : throw AcmeException::unexpectedKey();
         } catch (CryptoException) {
             // Not an EC key — an RSA account key is equally valid.
         }

@@ -60,7 +60,10 @@ final class Jws
 
     /**
      * The JOSE `alg` an account key signs with — ACME accepts an EC or an RSA
-     * account key, and the header name follows from the key's own type.
+     * account key, and the header name follows from the key's own type and
+     * curve (ES256 for P-256, ES384 for P-384, RS256 for RSA). A P-384 key
+     * signed under an ES256 header is rejected by the CA, so the mapping is the
+     * key's, never a constant.
      */
     public function algorithm(EcKey|RsaKey $key): string
     {

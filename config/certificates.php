@@ -188,7 +188,9 @@ return [
             'contact' => env('CERTIFICATES_ACME_CONTACT'),
 
             'account' => [
-                // EC (P-256) or RSA (2048-bit) account key.
+                // "EC" generates a P-256 key; "RSA" a 2048-bit one. An existing
+                // account key on the disk is used as-is: EC P-256 and P-384 are
+                // both accepted, and each signs under its own alg (ES256/ES384).
                 'key_type' => env('CERTIFICATES_ACME_KEY_TYPE', 'EC'),
                 'disk' => env('CERTIFICATES_ACME_ACCOUNT_DISK', 'local'),
                 'key_path' => env('CERTIFICATES_ACME_ACCOUNT_KEY', 'acme/account.pem'),

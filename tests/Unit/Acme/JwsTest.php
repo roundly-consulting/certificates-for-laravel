@@ -56,6 +56,31 @@ it('keeps the protected header ACME expects, with the jwk before the alg', funct
         ->toBe('{"nonce":"n","url":"https://acme.test/new-acct","jwk":{"crv":"P-256","kty":"EC","x":"ghggVMUPwnvokrwVD4wxY2qbl30bMxj83XZ0Kks7N7I","y":"XnDEzRuAjaFn3yU-kVRV3Tn9AetuIf-zl52T4TynVrQ"},"alg":"ES256"}');
 });
 
+it('signs a P-384 account key under an ES384 header', function (): void {
+    $key = EcKey::generate('P-384');
+
+    $jws = (new Jws)->signWithJwk(
+        ['nonce' => 'n', 'url' => 'https://acme.test/new-acct'],
+        ['termsOfServiceAgreed' => true],
+        $key,
+        Jwk::fromPublicKey($key),
+    );
+
+    /** @var array{alg: string, jwk: array{crv: string}} $header */
+    $header = json_decode(Base64Url::decode($jws->protected), true, 512, JSON_THROW_ON_ERROR);
+
+    // An ES256 header over a P-384 key is rejected by the CA outright; the alg
+    // and the curve must agree, and both come from the key.
+    expect($header['alg'])->toBe('ES384')
+        ->and($header['jwk']['crv'])->toBe('P-384')
+        ->and((new Jws)->algorithm($key))->toBe('ES384')
+        ->and(strlen(Base64Url::decode($jws->signature)))->toBe(96)
+        ->and((new Es(EcKey::public($key->publicPem())))->verify(
+            $jws->protected.'.'.$jws->payload,
+            Base64Url::decode($jws->signature),
+        ))->toBeTrue();
+});
+
 it('signs with the kid, never the jwk, once the account is registered', function (): void {
     $jws = (new Jws)->signWithKid(
         ['nonce' => 'n', 'url' => 'https://acme.test/order'],

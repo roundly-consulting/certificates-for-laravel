@@ -7,6 +7,7 @@ use RoundlyConsulting\Certificates\Acme\AcmeAccount;
 use RoundlyConsulting\Certificates\Exceptions\AcmeException;
 use RoundlyConsulting\Crypto\Codec\Base64Url;
 use RoundlyConsulting\Crypto\Hash\Digest;
+use RoundlyConsulting\Crypto\Signature\Algorithm;
 use RoundlyConsulting\Crypto\Signature\Key\EcKey;
 use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
 
@@ -171,8 +172,37 @@ it('caches the account JWK across calls', function (): void {
     expect($account->jwk())->toBe($account->jwk());
 });
 
-it('rejects an EC account key on a curve other than P-256', function (): void {
+it('accepts a P-384 EC account key and describes it as one', function (): void {
     Storage::disk('local')->put('acme/account.pem', EcKey::generate('P-384')->privatePem());
+
+    $account = account('EC');
+    $jwk = $account->jwk();
+
+    // The curve label and the coordinate length come from the key: a P-384 key
+    // advertised as P-256 (with 32-byte coordinates) would thumbprint to
+    // something the CA cannot re-derive, and every challenge would fail.
+    expect($account->load())->toBeInstanceOf(EcKey::class)
+        ->and($account->load()->curve)->toBe('P-384')
+        ->and($jwk->toArray()['crv'])->toBe('P-384')
+        ->and(strlen(Base64Url::decode($jwk->toArray()['x'])))->toBe(48)
+        ->and(strlen(Base64Url::decode($jwk->toArray()['y'])))->toBe(48)
+        ->and($jwk->algorithm())->toBe(Algorithm::ES384)
+        ->and($jwk->thumbprint())->not->toBe(EC_THUMBPRINT);
+});
+
+it('rejects an EC account key on a curve no CA accepts', function (): void {
+    Storage::disk('local')->put('acme/account.pem', EcKey::generate('P-521')->privatePem());
 
     account('EC')->load();
 })->throws(AcmeException::class, 'unsupported type');
+
+it('generates a P-256 key by default', function (): void {
+    $account = account('EC');
+    $account->generate();
+
+    $key = $account->load();
+
+    expect($key)->toBeInstanceOf(EcKey::class)
+        ->and($key->curve)->toBe('P-256')
+        ->and($account->jwk()->algorithm())->toBe(Algorithm::ES256);
+});
