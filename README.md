@@ -20,9 +20,9 @@ Pluggable providers cover the common deployment shapes:
 - **`acme`** — a native, pure-PHP [ACME v2](https://datatracker.ietf.org/doc/html/rfc8555) client
   that obtains certificates directly from Let's Encrypt (or any ACME CA), with a pluggable
   challenge-solver contract (HTTP-01 included; DNS-01 as a documented extension point). No
-  third-party crypto or HTTP SDK — the JWS, signatures, and codecs come from
-  [crypto-for-laravel](https://github.com/roundly-consulting/crypto-for-laravel), the CSR and X.509
-  handling from `ext-openssl`, and the transport from Laravel's HTTP client.
+  third-party crypto or HTTP SDK — the JWS, signatures, codecs, JWK and X.509 parsing come from
+  [crypto-for-laravel](https://github.com/roundly-consulting/crypto-for-laravel), the CSR from
+  `ext-openssl`, and the transport from Laravel's HTTP client.
 - **`kubernetes`** — talks to the Kubernetes API directly (no SDK) to read
   [cert-manager](https://cert-manager.io) certificates and patch an Ingress with TLS hosts.
 - **`filesystem`** — reads/writes PEM material on a Laravel `Storage` disk and can self-sign for
@@ -38,11 +38,17 @@ The provider contract is public, so you can plug in your own backend.
 
 - **[crypto-for-laravel](https://github.com/roundly-consulting/crypto-for-laravel)** (hard
   dependency) — every cryptographic primitive the ACME client needs is the shared, audited one:
-  the flattened JWS each request is signed with, RS256/ES256 signing (including the DER → raw
-  `r‖s` conversion Let's Encrypt requires for ES256), account key generation and loading, strict
-  base64url, and the SHA-256 behind the RFC 7638 JWK thumbprint and the challenge key
-  authorization. What stays here is ACME protocol: the `jwk`-vs-`kid` signing mode, the account
-  kid, the challenge solvers, the CSR, and certificate parsing.
+  the flattened JWS each request is signed with, RS256/ES256/ES384 signing (including the DER → raw
+  `r‖s` conversion Let's Encrypt requires), account key generation and loading, strict base64url,
+  the account's **JWK and its RFC 7638 thumbprint** (`Crypto\Jose\Jwk` — the curve label and the
+  coordinate width come from the key, so a P-384 account key is never advertised as a P-256 one),
+  and **X.509 parsing** (`Crypto\X509\Certificate`), which reads every issued certificate's
+  subject, SANs, validity, serial and fingerprint.
+
+  What stays here is ACME protocol and every **trust decision**: the `jwk`-vs-`kid` signing mode,
+  the account kid, the challenge solvers, the CSR (crypto has no enrollment API by design), and
+  what an expiring certificate means. Crypto reports certificate facts; this package decides what
+  to do about them.
 - **[alerts-for-laravel](https://github.com/roundly-consulting/alerts-for-laravel)** (hard
   dependency) — certificate expiry and lifecycle failures (expired / revoked / failed) are surfaced
   as first-class health checks, so they inherit alert dedup/throttle, escalation, silence windows,
@@ -192,7 +198,9 @@ Certificates::for('app.example.com')->using('acme')->issue();
 The default **HTTP-01** solver writes the challenge token to the configured Storage disk; your app
 must serve it at `/.well-known/acme-challenge/{token}`. Issued material (leaf, private key, chain)
 is stored on the configured store disk. The account key is generated and persisted automatically on
-first use (`account.auto_register`).
+first use (`account.auto_register`): `key_type` `EC` mints a P-256 key, `RSA` a 2048-bit one. An
+account key you place on the disk yourself is used as-is — EC **P-256 and P-384** are both accepted,
+and each is signed under its own algorithm (`ES256` / `ES384`), which is what the CA expects.
 
 **DNS-01** is a documented extension point. Extend `ChallengeSolvers\DnsChallengeSolver`, implement
 `publishRecord()` / `removeRecord()` against your DNS provider, and register it via
@@ -439,7 +447,8 @@ and `generate(string $name, string $domain): void`. Opt-in capability interfaces
   domains.
 
 To persist issued material, implement `Contracts\CertificateStore` (the package ships
-`Stores\FilesystemCertificateStore`) and parse PEM with `Support\X509Parser`.
+`Stores\FilesystemCertificateStore`) and read PEM into a `ParsedCertificate` with
+`Support\CertificateMapper`.
 
 ### Testing without a backend
 
