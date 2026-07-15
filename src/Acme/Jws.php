@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Certificates\Acme;
 use RoundlyConsulting\Certificates\Exceptions\AcmeException;
 use RoundlyConsulting\Crypto\Exceptions\CryptoException;
 use RoundlyConsulting\Crypto\Jose\FlattenedJws;
+use RoundlyConsulting\Crypto\Jose\Jwk;
 use RoundlyConsulting\Crypto\Jose\Jws as JoseJws;
 use RoundlyConsulting\Crypto\Signature\Es;
 use RoundlyConsulting\Crypto\Signature\Key\EcKey;
@@ -31,11 +32,13 @@ final class Jws
     /**
      * Sign a request with the embedded JWK (used for newAccount, before a kid).
      *
+     * The JWK serializes itself into the header, so its member set and order are
+     * the ones the CA re-derives the thumbprint from.
+     *
      * @param  array<string, mixed>  $protected
      * @param  array<string, mixed>|string  $payload
-     * @param  array<string, string>  $jwk
      */
-    public function signWithJwk(array $protected, array|string $payload, EcKey|RsaKey $key, array $jwk): FlattenedJws
+    public function signWithJwk(array $protected, array|string $payload, EcKey|RsaKey $key, Jwk $jwk): FlattenedJws
     {
         $protected['jwk'] = $jwk;
 

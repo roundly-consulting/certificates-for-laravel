@@ -19,9 +19,6 @@ it('will not use debugging functions')
  *    certificate requests.
  *  - Support\X509Parser — certificate introspection (openssl_x509_parse /
  *    _fingerprint). Same carve-out: trust and certificate handling stay here.
- *  - Acme\AcmeAccount — openssl_pkey_get_details, to read the raw public
- *    members a JWK is built from. That is key serialization, not an algorithm,
- *    and crypto exposes no JWK export.
  */
 arch('no crypto primitive is re-implemented locally')
     ->expect('RoundlyConsulting\Certificates')
@@ -41,7 +38,6 @@ arch('no crypto primitive is re-implemented locally')
         'base64_decode',
     ])
     ->ignoring([
-        'RoundlyConsulting\Certificates\Acme\AcmeAccount',
         'RoundlyConsulting\Certificates\Acme\Csr',
         'RoundlyConsulting\Certificates\Support\X509Parser',
     ]);

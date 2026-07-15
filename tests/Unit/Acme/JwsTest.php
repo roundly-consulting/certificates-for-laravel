@@ -6,6 +6,7 @@ use RoundlyConsulting\Certificates\Acme\Jws;
 use RoundlyConsulting\Certificates\Exceptions\AcmeException;
 use RoundlyConsulting\Crypto\Codec\Base64Url;
 use RoundlyConsulting\Crypto\Jose\FlattenedJws;
+use RoundlyConsulting\Crypto\Jose\Jwk;
 use RoundlyConsulting\Crypto\Signature\Es;
 use RoundlyConsulting\Crypto\Signature\Key\EcKey;
 use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
@@ -46,11 +47,13 @@ it('keeps the protected header ACME expects, with the jwk before the alg', funct
         ['nonce' => 'n', 'url' => 'https://acme.test/new-acct'],
         ['termsOfServiceAgreed' => true],
         $key,
-        ['crv' => 'P-256', 'kty' => 'EC', 'x' => 'xxx', 'y' => 'yyy'],
+        Jwk::fromPublicKey($key),
     );
 
+    // The JWK serializes in place, members lexicographic — the exact bytes the
+    // CA thumbprints.
     expect(Base64Url::decode($jws->protected))
-        ->toBe('{"nonce":"n","url":"https://acme.test/new-acct","jwk":{"crv":"P-256","kty":"EC","x":"xxx","y":"yyy"},"alg":"ES256"}');
+        ->toBe('{"nonce":"n","url":"https://acme.test/new-acct","jwk":{"crv":"P-256","kty":"EC","x":"ghggVMUPwnvokrwVD4wxY2qbl30bMxj83XZ0Kks7N7I","y":"XnDEzRuAjaFn3yU-kVRV3Tn9AetuIf-zl52T4TynVrQ"},"alg":"ES256"}');
 });
 
 it('signs with the kid, never the jwk, once the account is registered', function (): void {
@@ -71,7 +74,7 @@ it('signs with the kid, never the jwk, once the account is registered', function
 it('produces a raw 64-byte r||s signature for ES256, not DER', function (): void {
     $key = EcKey::private(accountKeyPem('ec'));
 
-    $jws = (new Jws)->signWithJwk(['nonce' => 'n', 'url' => 'u'], ['a' => 1], $key, ['kty' => 'EC']);
+    $jws = (new Jws)->signWithJwk(['nonce' => 'n', 'url' => 'u'], ['a' => 1], $key, Jwk::fromPublicKey($key));
 
     $signature = Base64Url::decode($jws->signature);
 

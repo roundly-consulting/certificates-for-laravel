@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Certificates\Acme;
 
 use Illuminate\Support\Facades\Storage;
-use OpenSSLAsymmetricKey;
 use RoundlyConsulting\Certificates\Exceptions\AcmeException;
-use RoundlyConsulting\Crypto\Codec\Base64Url;
 use RoundlyConsulting\Crypto\Exceptions\CryptoException;
-use RoundlyConsulting\Crypto\Hash\Digest;
+use RoundlyConsulting\Crypto\Jose\Jwk;
 use RoundlyConsulting\Crypto\Signature\Key\EcKey;
 use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
 
@@ -17,14 +15,17 @@ use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
  * Manages the ACME account key: generation, persistence on a Storage disk, the
  * public JWK + thumbprint used in key authorizations, and the account kid.
  *
- * Key generation, loading, and the digest are crypto-for-laravel's. The JWK
- * itself is JOSE serialization crypto does not model, so the member extraction
- * and the RFC 7638 canonicalization stay here — and they are frozen by test
- * vectors, because the thumbprint feeds every challenge's key authorization.
+ * Key generation, loading, the JWK serialization and the RFC 7638 thumbprint are
+ * all crypto-for-laravel's. What stays here is the ACME account itself: where
+ * the key lives, which key types a CA accepts, and the kid the server hands
+ * back. The curve label and the coordinate padding come from the key, so an EC
+ * account key is always advertised as the curve it actually is.
  */
 final class AcmeAccount
 {
     private EcKey|RsaKey|null $key = null;
+
+    private ?Jwk $jwk = null;
 
     private ?string $kid = null;
 
@@ -46,6 +47,8 @@ final class AcmeAccount
         }
 
         $this->key = $key;
+        $this->jwk = null;
+
         Storage::disk($this->disk)->put($this->keyPath, $pem);
     }
 
@@ -79,50 +82,30 @@ final class AcmeAccount
     }
 
     /**
-     * The public JWK with keys in lexicographic order for thumbprint stability.
-     *
-     * @return array<string, string>
+     * The account's public JWK (RFC 7517) — embedded in the protected header of
+     * newAccount, and the input to the thumbprint.
      */
-    public function jwk(): array
+    public function jwk(): Jwk
     {
-        $key = $this->load();
-        $details = $this->details($key->key);
-
-        if ($key instanceof EcKey) {
-            /** @var array{x: string, y: string} $ec */
-            $ec = $details['ec'];
-
-            return [
-                'crv' => 'P-256',
-                'kty' => 'EC',
-                'x' => Base64Url::encode($this->pad($ec['x'])),
-                'y' => Base64Url::encode($this->pad($ec['y'])),
-            ];
+        if ($this->jwk !== null) {
+            return $this->jwk;
         }
 
-        /** @var array{e: string, n: string} $rsa */
-        $rsa = $details['rsa'];
-
-        return [
-            'e' => Base64Url::encode($rsa['e']),
-            'kty' => 'RSA',
-            'n' => Base64Url::encode($rsa['n']),
-        ];
+        try {
+            return $this->jwk = Jwk::fromPublicKey($this->load());
+        } catch (CryptoException $e) {
+            throw AcmeException::signingFailed($e);
+        }
     }
 
     /**
      * base64url(sha256(canonical JWK)) — RFC 7638, used in challenge key
-     * authorizations. The member order is lexicographic and the JSON carries no
-     * whitespace: get either wrong and every challenge silently fails.
+     * authorizations. Get one byte of it wrong and every challenge silently
+     * fails, so the canonicalization is crypto's, pinned by frozen vectors.
      */
     public function thumbprint(): string
     {
-        $jwk = $this->jwk();
-        ksort($jwk);
-
-        $json = json_encode($jwk, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-
-        return Base64Url::encode((new Digest)->raw($json));
+        return $this->jwk()->thumbprint();
     }
 
     public function kid(): ?string
@@ -168,9 +151,6 @@ final class AcmeAccount
         try {
             $key = EcKey::private($pem);
 
-            // jwk() publishes `crv: P-256` and pads both coordinates to 32
-            // bytes, so a larger curve would be advertised — and thumbprinted —
-            // as something it is not.
             return $key->curve === 'P-256' ? $key : throw AcmeException::unexpectedKey();
         } catch (CryptoException) {
             // Not an EC key — an RSA account key is equally valid.
@@ -183,30 +163,8 @@ final class AcmeAccount
         }
     }
 
-    /**
-     * A JWK carries the key's raw public members, which no crypto primitive
-     * exposes — this is key serialization, not an algorithm.
-     *
-     * @return array<string, mixed>
-     */
-    private function details(OpenSSLAsymmetricKey $key): array
-    {
-        $details = openssl_pkey_get_details($key);
-
-        if ($details === false) {
-            throw AcmeException::signingFailed();
-        }
-
-        return $details;
-    }
-
     private function kidPath(): string
     {
         return $this->keyPath.'.kid';
-    }
-
-    private function pad(string $value): string
-    {
-        return str_pad(ltrim($value, "\x00"), 32, "\x00", STR_PAD_LEFT);
     }
 }

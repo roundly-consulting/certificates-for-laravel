@@ -69,7 +69,7 @@ it('generates and persists an EC key', function (): void {
         ->and($account->exists())->toBeTrue()
         ->and($account->load())->toBeInstanceOf(EcKey::class);
 
-    $jwk = $account->jwk();
+    $jwk = $account->jwk()->toArray();
 
     expect($jwk['kty'])->toBe('EC')
         ->and($jwk['crv'])->toBe('P-256')
@@ -80,7 +80,7 @@ it('generates an RSA key with an RSA jwk', function (): void {
     $account = account('RSA');
     $account->generate();
 
-    $jwk = $account->jwk();
+    $jwk = $account->jwk()->toArray();
 
     expect($account->load())->toBeInstanceOf(RsaKey::class)
         ->and($jwk['kty'])->toBe('RSA')
@@ -146,7 +146,7 @@ it('computes the exact RFC 7638 thumbprint the pre-crypto code produced', functi
 ]);
 
 it('publishes the exact JWK members the thumbprint is taken over', function (string $type, array $expected): void {
-    expect(storedAccount($type)->jwk())->toBe($expected);
+    expect(storedAccount($type)->jwk()->toArray())->toBe($expected);
 })->with([
     'ec' => ['EC', EC_JWK],
     'rsa' => ['RSA', RSA_JWK],
@@ -154,17 +154,22 @@ it('publishes the exact JWK members the thumbprint is taken over', function (str
 
 it('canonicalizes the JWK to the exact bytes the thumbprint digests', function (string $type, string $json): void {
     $jwk = storedAccount($type)->jwk();
-    ksort($jwk);
 
     // RFC 7638 §3.3: required members only, lexicographic, no whitespace,
     // slashes unescaped. The digest of these bytes IS the thumbprint.
-    expect(json_encode($jwk, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR))->toBe($json)
-        ->and(Base64Url::encode((new Digest)->raw($json)))
-        ->toBe($type === 'EC' ? EC_THUMBPRINT : RSA_THUMBPRINT);
+    expect(json_encode($jwk->requiredMembers(), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR))->toBe($json)
+        ->and(Base64Url::encode((new Digest)->raw($json)))->toBe($jwk->thumbprint())
+        ->and($jwk->thumbprint())->toBe($type === 'EC' ? EC_THUMBPRINT : RSA_THUMBPRINT);
 })->with([
     'ec' => ['EC', EC_JWK_JSON],
     'rsa' => ['RSA', RSA_JWK_JSON],
 ]);
+
+it('caches the account JWK across calls', function (): void {
+    $account = storedAccount('EC');
+
+    expect($account->jwk())->toBe($account->jwk());
+});
 
 it('rejects an EC account key on a curve other than P-256', function (): void {
     Storage::disk('local')->put('acme/account.pem', EcKey::generate('P-384')->privatePem());
