@@ -16,7 +16,7 @@ use RoundlyConsulting\Certificates\DataTransferObjects\AcmeChallenge;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\StoredCertificate;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
-use RoundlyConsulting\Certificates\Support\X509Parser;
+use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 use Throwable;
 
@@ -31,7 +31,7 @@ final class AcmeProvider implements CertificateProvider, ProvisionsMultipleDomai
         private readonly Csr $csr,
         private readonly CertificateStore $store,
         private readonly AcmeChallengeSolver $solver,
-        private readonly X509Parser $parser,
+        private readonly CertificateMapper $parser,
         private readonly int $pollAttempts = 30,
         private readonly int $pollSeconds = 2,
     ) {}

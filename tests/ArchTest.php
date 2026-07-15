@@ -8,17 +8,15 @@ it('will not use debugging functions')
 
 /*
  * Crypto primitives are crypto-for-laravel's, not ours: base64url, SHA-256
- * digests, RSA/ECDSA signing, the ECDSA DER ↔ raw `r‖s` conversion, and account
- * key generation/loading all route through RoundlyConsulting\Crypto.
+ * digests, RSA/ECDSA signing, the ECDSA DER ↔ raw `r‖s` conversion, account key
+ * generation/loading, the JWK + its RFC 7638 thumbprint, and X.509 parsing all
+ * route through RoundlyConsulting\Crypto.
  *
- * Deliberately NOT covered by the ban:
- *
- *  - Acme\Csr — CSR generation and the self-signed fallback (openssl_csr_*,
- *    openssl_pkey_new/_export, openssl_x509_export, and the base64 of a PEM
- *    body). crypto has no X.509 or CSR module: it owns algorithms, we own
- *    certificate requests.
- *  - Support\X509Parser — certificate introspection (openssl_x509_parse /
- *    _fingerprint). Same carve-out: trust and certificate handling stay here.
+ * Exactly ONE carve-out is left: Acme\Csr — CSR generation and the self-signed
+ * fallback (openssl_csr_*, openssl_pkey_new/_export, openssl_x509_export, and
+ * the base64 of a PEM body). Crypto has no CSR module by design: enrollment is
+ * certificate *content* policy, which is ours. Every other openssl_* in this
+ * package is gone.
  */
 arch('no crypto primitive is re-implemented locally')
     ->expect('RoundlyConsulting\Certificates')
@@ -33,21 +31,37 @@ arch('no crypto primitive is re-implemented locally')
         'openssl_pkey_get_public',
         'openssl_pkey_get_details',
         'openssl_pkey_export',
+        'openssl_x509_read',
+        'openssl_x509_parse',
+        'openssl_x509_fingerprint',
+        'openssl_x509_verify',
         'random_bytes',
         'base64_encode',
         'base64_decode',
     ])
     ->ignoring([
         'RoundlyConsulting\Certificates\Acme\Csr',
-        'RoundlyConsulting\Certificates\Support\X509Parser',
     ]);
 
-it('keeps CSR and X.509 handling out of crypto')
-    ->expect([
-        'RoundlyConsulting\Certificates\Acme\Csr',
-        'RoundlyConsulting\Certificates\Support\X509Parser',
-    ])
+it('keeps CSR generation out of crypto')
+    ->expect('RoundlyConsulting\Certificates\Acme\Csr')
     ->not->toUse('RoundlyConsulting\Crypto');
+
+it('leaves openssl in the CSR generator alone', function (): void {
+    $offenders = [];
+
+    foreach (phpFilesIn(__DIR__.'/../src') as $file) {
+        if ($file->getBasename() === 'Csr.php') {
+            continue;
+        }
+
+        if (preg_match('/\bopenssl_[a-z0-9_]+\s*\(/i', (string) file_get_contents($file->getPathname())) === 1) {
+            $offenders[] = $file->getBasename();
+        }
+    }
+
+    expect($offenders)->toBe([]);
+});
 
 it('builds on crypto-for-laravel rather than a third-party crypto vendor')
     ->expect('RoundlyConsulting\Certificates')
@@ -73,7 +87,12 @@ it('does not import a crypto class marked @internal', function (): void {
         $internal[] = $namespace[1].'\\'.$file->getBasename('.php');
     }
 
-    expect($internal)->not->toBeEmpty();
+    // The scan is dynamic, so a newly-@internal crypto class is covered the day
+    // it lands. These two are named to prove the scan really sees them — the
+    // X.509 gateway is the one this package came closest to needing.
+    expect($internal)
+        ->toContain('RoundlyConsulting\Crypto\X509\OpenSslX509')
+        ->toContain('RoundlyConsulting\Crypto\Signature\OpenSsl');
 
     $offenders = [];
 

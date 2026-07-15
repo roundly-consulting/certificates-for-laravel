@@ -13,7 +13,7 @@ use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Exceptions\AcmeException;
 use RoundlyConsulting\Certificates\Providers\AcmeProvider;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
-use RoundlyConsulting\Certificates\Support\X509Parser;
+use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\Tests\Helpers\Pem;
 use RoundlyConsulting\Crypto\Codec\Base64Url;
 use RoundlyConsulting\Crypto\Hash\Digest;
@@ -47,7 +47,7 @@ function makeProvider(string $keyType = 'EC'): AcmeProvider
         csr: new Csr,
         store: new FilesystemCertificateStore(disk: 'local', path: 'certificates'),
         solver: new HttpChallengeSolver(disk: 'local', path: 'acme-challenge'),
-        parser: new X509Parser,
+        parser: new CertificateMapper,
         pollAttempts: 3,
         pollSeconds: 0,
     );

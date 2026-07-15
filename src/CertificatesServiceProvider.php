@@ -25,7 +25,7 @@ use RoundlyConsulting\Certificates\Events\CertificateRevoked;
 use RoundlyConsulting\Certificates\Listeners\AlertOnCertificateLifecycleFailure;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
-use RoundlyConsulting\Certificates\Support\X509Parser;
+use RoundlyConsulting\Certificates\Support\CertificateMapper;
 
 final class CertificatesServiceProvider extends ServiceProvider
 {
@@ -65,7 +65,7 @@ final class CertificatesServiceProvider extends ServiceProvider
             );
         });
 
-        $this->app->bind(X509Parser::class, fn (): X509Parser => new X509Parser);
+        $this->app->bind(CertificateMapper::class, fn (): CertificateMapper => new CertificateMapper);
 
         $this->app->singleton(
             CachedStatusResolver::class,

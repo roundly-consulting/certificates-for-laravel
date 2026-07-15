@@ -9,7 +9,7 @@ use RoundlyConsulting\Certificates\DataTransferObjects\StoredCertificate;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Providers\LocalFilesystemProvider;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
-use RoundlyConsulting\Certificates\Support\X509Parser;
+use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\Tests\Helpers\Pem;
 
 beforeEach(function (): void {
@@ -23,12 +23,12 @@ function fsStore(): FilesystemCertificateStore
 
 function selfSigningProvider(): LocalFilesystemProvider
 {
-    return new LocalFilesystemProvider(fsStore(), new X509Parser, new Csr, selfSignedDays: 30);
+    return new LocalFilesystemProvider(fsStore(), new CertificateMapper, new Csr, selfSignedDays: 30);
 }
 
 function importOnlyProvider(): LocalFilesystemProvider
 {
-    return new LocalFilesystemProvider(fsStore(), new X509Parser);
+    return new LocalFilesystemProvider(fsStore(), new CertificateMapper);
 }
 
 it('generates a self-signed certificate and reports it issued', function (): void {

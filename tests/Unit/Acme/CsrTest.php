@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Certificates\Acme\Csr;
-use RoundlyConsulting\Certificates\Support\X509Parser;
+use RoundlyConsulting\Certificates\Support\CertificateMapper;
 
 it('generates a DER csr for a single domain', function (): void {
     $csr = new Csr;
@@ -35,7 +35,7 @@ it('generates a self-signed certificate covering every SAN', function (): void {
     expect($cert)->toContain('BEGIN CERTIFICATE')
         ->and($key)->toContain('PRIVATE KEY');
 
-    $parsed = (new X509Parser)->parse($cert);
+    $parsed = (new CertificateMapper)->parse($cert);
 
     expect($parsed->commonName)->toBe('app.com')
         ->and($parsed->subjectAltNames)->toContain('app.com', 'www.app.com', '*.app.com');

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
-use RoundlyConsulting\Certificates\Support\X509Parser;
+use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\Tests\Helpers\Pem;
 
 /**
@@ -28,7 +28,7 @@ const ORG_SERIAL = '0123456789';
 const ORG_FINGERPRINT = '8EC5F9A1E98DF06F9C1171007159F00DD4F810437110D71C2B7AE46BE27B3D8A';
 
 it('parses every frozen field of the committed leaf certificate', function (): void {
-    $parsed = (new X509Parser)->parse(fixtureCertificatePem('leaf'));
+    $parsed = (new CertificateMapper)->parse(fixtureCertificatePem('leaf'));
 
     expect($parsed->commonName)->toBe(LEAF_COMMON_NAME)
         ->and($parsed->subjectAltNames)->toBe(LEAF_SANS)
@@ -41,7 +41,7 @@ it('parses every frozen field of the committed leaf certificate', function (): v
 });
 
 it('persists the certificate fingerprint as UPPER-case sha256 hex', function (): void {
-    $parsed = (new X509Parser)->parse(fixtureCertificatePem('leaf'));
+    $parsed = (new CertificateMapper)->parse(fixtureCertificatePem('leaf'));
 
     // OpenSSL emits lower-case; the stored form is upper-case. Both halves are
     // asserted, because a stored fingerprint is only ever compared as a string.
@@ -51,7 +51,7 @@ it('persists the certificate fingerprint as UPPER-case sha256 hex', function ():
 });
 
 it('falls back to the issuer organization when the issuer carries no common name', function (): void {
-    $parsed = (new X509Parser)->parse(fixtureCertificatePem('org-only'));
+    $parsed = (new CertificateMapper)->parse(fixtureCertificatePem('org-only'));
 
     expect($parsed->issuer)->toBe(ORG_ISSUER)
         ->and($parsed->commonName)->toBe('')
@@ -63,7 +63,7 @@ it('falls back to the issuer organization when the issuer carries no common name
 it('parses a self-signed certificate', function (): void {
     $material = Pem::selfSigned(['example.com', 'www.example.com'], days: 30);
 
-    $parsed = (new X509Parser)->parse($material['cert']);
+    $parsed = (new CertificateMapper)->parse($material['cert']);
 
     expect($parsed->commonName)->toBe('example.com')
         ->and($parsed->subjectAltNames)->toContain('example.com', 'www.example.com')
@@ -77,12 +77,12 @@ it('parses a self-signed certificate', function (): void {
 it('parses only the first certificate in a bundle', function (): void {
     $bundle = fixtureCertificatePem('leaf')."\n".fixtureCertificatePem('org-only');
 
-    $parsed = (new X509Parser)->parse($bundle);
+    $parsed = (new CertificateMapper)->parse($bundle);
 
     expect($parsed->commonName)->toBe(LEAF_COMMON_NAME)
         ->and($parsed->fingerprint)->toBe(LEAF_FINGERPRINT);
 });
 
 it('throws on unparseable pem', function (): void {
-    (new X509Parser)->parse('not a certificate');
+    (new CertificateMapper)->parse('not a certificate');
 })->throws(CertificateException::class);

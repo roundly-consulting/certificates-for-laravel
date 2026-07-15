@@ -20,7 +20,7 @@ use RoundlyConsulting\Certificates\Providers\KubernetesProvider;
 use RoundlyConsulting\Certificates\Providers\LocalFilesystemProvider;
 use RoundlyConsulting\Certificates\Providers\NullProvider;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
-use RoundlyConsulting\Certificates\Support\X509Parser;
+use RoundlyConsulting\Certificates\Support\CertificateMapper;
 
 /**
  * @method CertificateProvider driver(?string $driver = null)
@@ -91,7 +91,7 @@ final class CertificateManager extends Manager
 
         return new LocalFilesystemProvider(
             store: $store,
-            parser: new X509Parser,
+            parser: new CertificateMapper,
             csr: $selfSigned ? new Csr : null,
             selfSignedDays: (int) ($config['self_signed_days'] ?? 90),
         );
@@ -139,7 +139,7 @@ final class CertificateManager extends Manager
             csr: new Csr,
             store: $store,
             solver: $this->resolveSolver($config),
-            parser: new X509Parser,
+            parser: new CertificateMapper,
             pollAttempts: (int) ($pollConfig['attempts'] ?? 30),
             pollSeconds: (int) ($pollConfig['seconds'] ?? 2),
         );

@@ -13,7 +13,7 @@ use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\StoredCertificate;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
-use RoundlyConsulting\Certificates\Support\X509Parser;
+use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 /**
@@ -26,7 +26,7 @@ final class LocalFilesystemProvider implements CertificateProvider, ProvisionsMu
 {
     public function __construct(
         private readonly CertificateStore $store,
-        private readonly X509Parser $parser,
+        private readonly CertificateMapper $parser,
         private readonly ?Csr $csr = null,
         private readonly int $selfSignedDays = 90,
     ) {}
