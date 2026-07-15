@@ -18,3 +18,17 @@ function accountKeyPem(string $type): string
 {
     return (string) file_get_contents(__DIR__.'/Fixtures/keys/acme-account-'.$type.'.pem');
 }
+
+/**
+ * A committed X.509 fixture certificate (`leaf` or `org-only`).
+ *
+ * Certificates minted on the fly are random, so nothing about them can be
+ * frozen. These two are fixed: every field the package persists — the
+ * UPPER-case SHA-256 fingerprint above all — is pinned against them, so a
+ * change of parsing engine surfaces as a failing byte comparison rather than as
+ * a certificate row that silently no longer matches the one on disk.
+ */
+function fixtureCertificatePem(string $name): string
+{
+    return (string) file_get_contents(__DIR__.'/Fixtures/certs/'.$name.'.pem');
+}
