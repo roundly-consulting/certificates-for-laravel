@@ -89,22 +89,22 @@ final class CertificatesServiceProvider extends PackageServiceProvider
 
         // Default certificate store + challenge solver, overridable by host apps.
         $this->app->singleton(CertificateStore::class, function (): CertificateStore {
-            /** @var array<string, mixed> $config */
-            $config = config('certificates.drivers.acme.store', []);
+            /** @var array<string, mixed> $store */
+            $store = config('certificates.drivers.acme.store', []);
 
             return new FilesystemCertificateStore(
-                disk: (string) ($config['disk'] ?? 'local'),
-                path: (string) ($config['path'] ?? 'certificates'),
+                disk: (string) ($store['disk'] ?? 'local'),
+                path: (string) ($store['path'] ?? 'certificates'),
             );
         });
 
         $this->app->singleton(AcmeChallengeSolver::class, function (): AcmeChallengeSolver {
-            /** @var array<string, mixed> $config */
-            $config = config('certificates.drivers.acme.http', []);
+            /** @var array<string, mixed> $http */
+            $http = config('certificates.drivers.acme.http', []);
 
             return new HttpChallengeSolver(
-                disk: (string) ($config['disk'] ?? 'local'),
-                path: (string) ($config['path'] ?? 'acme-challenge'),
+                disk: (string) ($http['disk'] ?? 'local'),
+                path: (string) ($http['path'] ?? 'acme-challenge'),
             );
         });
 
@@ -137,7 +137,14 @@ final class CertificatesServiceProvider extends PackageServiceProvider
         );
 
         if (config('certificates.alerts.register_check', false) === true) {
-            Health::check(new CertificateExpiryCheck);
+            // `via()` is not optional polish: without it the check carries the alerts
+            // Check base's own null default, and `certificates.alerts.channels` — a
+            // shipped, documented key — reaches nothing. A host configuring `['slack']`
+            // was silently notified wherever alerts happened to default to.
+            /** @var list<string> $channels */
+            $channels = (array) config('certificates.alerts.channels', ['mail']);
+
+            Health::check((new CertificateExpiryCheck)->via($channels));
         }
     }
 
