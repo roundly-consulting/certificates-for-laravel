@@ -2,9 +2,84 @@
 
 declare(strict_types=1);
 
-it('will not use debugging functions')
-    ->expect(['dd', 'dump', 'ray'])
-    ->each->not->toBeUsed();
+use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\ChallengeSolvers\DnsChallengeSolver;
+use RoundlyConsulting\Certificates\Exceptions\CertificateException;
+use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Testing\Arch\ArchPresets;
+
+ArchPresets::strictTypes('RoundlyConsulting\Certificates');
+
+/**
+ * Four deliberate extension points: the registry model `certificates.model` invites a
+ * host to subclass (pinned by the preset below instead), `CertificateException` as the
+ * base every certificates error extends so a host can catch them uniformly,
+ * `DnsChallengeSolver` as the abstract a host extends per DNS provider, and
+ * `CertificateService`, the facade's backing service.
+ */
+ArchPresets::finalByDefault('RoundlyConsulting\Certificates')
+    ->ignoring([
+        Certificate::class,
+        CertificateException::class,
+        DnsChallengeSolver::class,
+        CertificateService::class,
+    ]);
+
+/**
+ * The counter-weight, and the fleet's 7×-shipped fatal: `final` on a config-swappable
+ * model is a PHP fatal error the moment a host uses the seam the config documents. The
+ * preset also pins that `certificates.model` really defaults to the packaged model, so
+ * the seam cannot rot in the other direction either.
+ */
+ArchPresets::swappableModelsAreNotFinal([
+    Certificate::class => 'certificates.model',
+]);
+
+/**
+ * `certificates.model` resolves through the CertificateModel seam in Support. Adopted
+ * here rather than rejected as jwt rejected it: certificates has exactly the shape the
+ * preset is aimed at — a real Eloquent model behind a conventionally named `model` key —
+ * so the stray-literal half has something to say, and nothing here needs the late static
+ * binding the preset bans (the seam returns a class-string and every call site goes
+ * through `CertificateModel::class()`).
+ */
+ArchPresets::modelsResolveThroughSeam(__DIR__.'/../src', 'Support');
+
+/**
+ * The Dependency Policy as a test — the assertion that caught bug #6 fleet-wide, where
+ * CI installed testbench into `require` before the suite ran. No `alsoAllow`: this
+ * package's `require` ships only php/ext/illuminate/roundly, and the workflow installs
+ * test tooling with `--dev`. If it goes red the graph is wrong; never widen it to quiet
+ * it.
+ */
+ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../composer.json');
+
+/**
+ * Replaces the hand-written `['dd', 'dump', 'ray']` rule above, which had a hole exactly
+ * where it mattered: Pest's arch layer only sees a symbol that EXISTS, and `acme/ray`
+ * is not in the dependency graph by policy, so `ray` was filtered out before the ban ran
+ * and could never fail. The preset reads source tokens instead, and adds `var_dump` /
+ * `print_r`, which this package never banned.
+ */
+ArchPresets::noDebuggingLeftovers([], __DIR__.'/../src');
+
+/*
+ * `ArchPresets::noLocalCryptoPrimitives` is deliberately NOT adopted, and this is the
+ * one package where that is a strengthening rather than a gap.
+ *
+ * The bespoke rules below are strictly stronger than the preset on every axis that
+ * matters here:
+ *  - they ban more (`openssl_x509_*`, `hash_equals`, and named third-party crypto
+ *    vendors the preset says nothing about);
+ *  - the Csr carve-out is enforced by a TOKEN scan that skips exactly one FILE, rather
+ *    than by Pest's `->ignoring()`, which is CLASS-scoped and would blind Csr to every
+ *    other primitive at once — the same reasoning the preset's own docblock gives;
+ *  - `it('keeps CSR generation out of crypto')` and the `@internal` scan express
+ *    cross-package rules no preset has.
+ * Adopting the preset on top would add nothing and would require exactly the
+ * class-scoped exemption the bespoke rules exist to avoid. This package is
+ * crypto-adjacent; its crypto rules are left as their authors wrote them.
+ */
 
 /*
  * Crypto primitives are crypto-for-laravel's, not ours: base64url, SHA-256
