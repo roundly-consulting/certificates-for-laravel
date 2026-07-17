@@ -17,7 +17,7 @@ return new class extends Migration
         }
 
         Schema::table($table, function (Blueprint $table): void {
-            $table->json('domains')->nullable()->after('domain');
+            $table->jsonb('domains')->nullable()->after('domain');
         });
     }
 };

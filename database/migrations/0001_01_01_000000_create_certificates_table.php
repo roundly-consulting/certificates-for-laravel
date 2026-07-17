@@ -25,7 +25,7 @@ return new class extends Migration
             $table->timestamp('expires_at')->nullable()->index();
             $table->timestamp('last_renewed_at')->nullable();
             $table->text('last_error')->nullable();
-            $table->json('meta')->nullable();
+            $table->jsonb('meta')->nullable();
             $table->timestamps();
             $table->softDeletes();
 
