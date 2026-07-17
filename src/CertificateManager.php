@@ -47,22 +47,22 @@ final class CertificateManager extends Manager
 
     public function createKubernetesDriver(): CertificateProvider
     {
-        /** @var array<string, mixed> $config */
-        $config = $this->config->get('certificates.drivers.kubernetes')
+        /** @var array<string, mixed> $kubernetes */
+        $kubernetes = $this->config->get('certificates.drivers.kubernetes')
             ?? $this->config->get('certificates.providers.kubernetes', []);
 
-        $verify = $config['ca_path'] ?? true;
+        $verify = $kubernetes['ca_path'] ?? true;
 
         return new KubernetesProvider(
-            baseUrl: (string) ($config['base_url'] ?? ''),
-            token: $this->resolveToken($config),
-            namespace: (string) ($config['namespace'] ?? 'default'),
-            ingressName: (string) ($config['ingress']['name'] ?? ''),
-            serviceName: isset($config['service']['name']) ? (string) $config['service']['name'] : null,
-            servicePort: (int) ($config['service']['port'] ?? 80),
-            issuer: (string) ($config['issuer'] ?? 'letsencrypt'),
-            issuerKind: (string) ($config['issuer_kind'] ?? 'ClusterIssuer'),
-            ingressClass: (string) ($config['ingress']['class'] ?? 'nginx'),
+            baseUrl: (string) ($kubernetes['base_url'] ?? ''),
+            token: $this->resolveToken($kubernetes),
+            namespace: (string) ($kubernetes['namespace'] ?? 'default'),
+            ingressName: (string) ($kubernetes['ingress']['name'] ?? ''),
+            serviceName: isset($kubernetes['service']['name']) ? (string) $kubernetes['service']['name'] : null,
+            servicePort: (int) ($kubernetes['service']['port'] ?? 80),
+            issuer: (string) ($kubernetes['issuer'] ?? 'letsencrypt'),
+            issuerKind: (string) ($kubernetes['issuer_kind'] ?? 'ClusterIssuer'),
+            ingressClass: (string) ($kubernetes['ingress']['class'] ?? 'nginx'),
             verify: is_string($verify) ? $verify : (bool) $verify,
         );
     }
@@ -79,35 +79,35 @@ final class CertificateManager extends Manager
 
     public function createFilesystemDriver(): CertificateProvider
     {
-        /** @var array<string, mixed> $config */
-        $config = $this->config->get('certificates.drivers.filesystem', []);
+        /** @var array<string, mixed> $filesystem */
+        $filesystem = $this->config->get('certificates.drivers.filesystem', []);
 
         $store = new FilesystemCertificateStore(
-            disk: (string) ($config['disk'] ?? 'local'),
-            path: (string) ($config['path'] ?? 'certificates'),
+            disk: (string) ($filesystem['disk'] ?? 'local'),
+            path: (string) ($filesystem['path'] ?? 'certificates'),
         );
 
-        $selfSigned = (bool) ($config['self_signed'] ?? false);
+        $selfSigned = (bool) ($filesystem['self_signed'] ?? false);
 
         return new LocalFilesystemProvider(
             store: $store,
             parser: new CertificateMapper,
             csr: $selfSigned ? new Csr : null,
-            selfSignedDays: (int) ($config['self_signed_days'] ?? 90),
+            selfSignedDays: (int) ($filesystem['self_signed_days'] ?? 90),
         );
     }
 
     public function createAcmeDriver(): CertificateProvider
     {
-        /** @var array<string, mixed> $config */
-        $config = $this->config->get('certificates.drivers.acme', []);
+        /** @var array<string, mixed> $acme */
+        $acme = $this->config->get('certificates.drivers.acme', []);
 
         /** @var array<string, mixed> $accountConfig */
-        $accountConfig = $config['account'] ?? [];
+        $accountConfig = $acme['account'] ?? [];
         /** @var array<string, mixed> $storeConfig */
-        $storeConfig = $config['store'] ?? [];
+        $storeConfig = $acme['store'] ?? [];
         /** @var array<string, mixed> $pollConfig */
-        $pollConfig = $config['poll'] ?? [];
+        $pollConfig = $acme['poll'] ?? [];
 
         $jws = new Jws;
 
@@ -118,15 +118,15 @@ final class CertificateManager extends Manager
             autoRegister: (bool) ($accountConfig['auto_register'] ?? true),
         );
 
-        $verify = $config['verify'] ?? true;
+        $verify = $acme['verify'] ?? true;
 
         $client = new AcmeClient(
             jws: $jws,
             account: $account,
-            directoryUrl: (string) ($config['directory'] ?? 'https://acme-v02.api.letsencrypt.org/directory'),
-            contact: isset($config['contact']) ? (string) $config['contact'] : null,
+            directoryUrl: (string) ($acme['directory'] ?? 'https://acme-v02.api.letsencrypt.org/directory'),
+            contact: isset($acme['contact']) ? (string) $acme['contact'] : null,
             verify: is_string($verify) ? $verify : (bool) $verify,
-            challengeType: (string) ($config['challenge_type'] ?? 'http-01'),
+            challengeType: (string) ($acme['challenge_type'] ?? 'http-01'),
         );
 
         $store = new FilesystemCertificateStore(
@@ -138,7 +138,7 @@ final class CertificateManager extends Manager
             client: $client,
             csr: new Csr,
             store: $store,
-            solver: $this->resolveSolver($config),
+            solver: $this->resolveSolver($acme),
             parser: new CertificateMapper,
             pollAttempts: (int) ($pollConfig['attempts'] ?? 30),
             pollSeconds: (int) ($pollConfig['seconds'] ?? 2),
@@ -146,11 +146,11 @@ final class CertificateManager extends Manager
     }
 
     /**
-     * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $acme
      */
-    private function resolveSolver(array $config): AcmeChallengeSolver
+    private function resolveSolver(array $acme): AcmeChallengeSolver
     {
-        $solver = $config['solver'] ?? null;
+        $solver = $acme['solver'] ?? null;
 
         if (is_string($solver) && $solver !== '') {
             /** @var AcmeChallengeSolver $instance */
@@ -160,7 +160,7 @@ final class CertificateManager extends Manager
         }
 
         /** @var array<string, mixed> $http */
-        $http = $config['http'] ?? [];
+        $http = $acme['http'] ?? [];
 
         return new HttpChallengeSolver(
             disk: (string) ($http['disk'] ?? 'local'),
@@ -172,15 +172,15 @@ final class CertificateManager extends Manager
      * Read the bearer token, preferring an inline value and falling back to a
      * mounted service-account token file when only a path is configured.
      *
-     * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $kubernetes
      */
-    private function resolveToken(array $config): string
+    private function resolveToken(array $kubernetes): string
     {
-        if (! empty($config['token'])) {
-            return (string) $config['token'];
+        if (! empty($kubernetes['token'])) {
+            return (string) $kubernetes['token'];
         }
 
-        $path = $config['token_path'] ?? null;
+        $path = $kubernetes['token_path'] ?? null;
 
         if (is_string($path) && is_readable($path)) {
             return trim((string) file_get_contents($path));
