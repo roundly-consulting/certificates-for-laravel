@@ -26,11 +26,14 @@ use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 
 final class CertificatesServiceProvider extends PackageServiceProvider
 {
+    use RegistersBlueprintMacros;
+
     public function configurePackage(Package $package): void
     {
         $package
@@ -130,6 +133,10 @@ final class CertificatesServiceProvider extends PackageServiceProvider
     public function boot(): void
     {
         parent::boot();
+
+        // The migration's key-type-aware certifiable morph is a macro, so it must
+        // exist before a host runs `php artisan migrate`.
+        $this->registerBlueprintMacros();
 
         Event::listen(
             [CertificateFailed::class, CertificateRevoked::class, CertificateExpired::class],

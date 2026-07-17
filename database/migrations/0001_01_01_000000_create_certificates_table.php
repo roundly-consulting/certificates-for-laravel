@@ -6,12 +6,17 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\PackageToolkit\Enums\KeyType;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create((string) config('certificates.table', 'certificates'), function (Blueprint $table): void {
+        // Silently falls back to bigint for an unrecognized value, so a typo in
+        // the host's config never leaves the package unable to migrate.
+        $keyType = KeyType::fromConfig('certificates.key_type');
+
+        Schema::create((string) config('certificates.table', 'certificates'), function (Blueprint $table) use ($keyType): void {
             $table->id();
             $table->string('name')->index();
             $table->string('domain')->index();
@@ -20,7 +25,7 @@ return new class extends Migration
             $table->string('issuer')->nullable();
             $table->string('serial')->nullable();
             $table->string('fingerprint')->nullable();
-            $table->nullableMorphs('certifiable');
+            $table->morphKey('certifiable', $keyType, nullable: true);
             $table->timestamp('issued_at')->nullable();
             $table->timestamp('expires_at')->nullable()->index();
             $table->timestamp('last_renewed_at')->nullable();

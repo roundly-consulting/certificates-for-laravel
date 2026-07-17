@@ -12,7 +12,7 @@ declare(strict_types=1);
  *    config that lies to the host: media #27's `max_file_size` cap that never applied.
  */
 it('ships exactly the config keys it reads', function (): void {
-    expect(__DIR__.'/../../config/certificates.php')->toSatisfyConfigContract(__DIR__.'/../../src', [
+    expect(__DIR__.'/../../config/certificates.php')->toSatisfyConfigContract([__DIR__.'/../../src', __DIR__.'/../../database'], [
         // Several real reads never appear as a `config(` token: `certificates.model`
         // goes through the toolkit's `ModelResolver::for('certificates.model', …)` seam
         // that drives the whole model swap, and `CertificateManager` takes an injected
