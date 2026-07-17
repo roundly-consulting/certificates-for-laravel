@@ -51,6 +51,14 @@ ArchPresets::modelsResolveThroughSeam(__DIR__.'/../src', 'Support');
  * test tooling with `--dev`. If it goes red the graph is wrong; never widen it to quiet
  * it.
  */
+/**
+ * The morph-key seam, guarded. The certifiable column migrated off raw `$table->morphs()`
+ * onto `morphKey($name, KeyType::fromConfig(...))` so a uuid/ulid host can flip its whole
+ * graph coherently — a hardcoded bigint id breaks those hosts on Postgres, and SQLite type
+ * affinity hides it. This pin reds if a future migration reintroduces a raw morph.
+ */
+ArchPresets::morphColumnsUseTheSeam(__DIR__.'/../database/migrations');
+
 ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../composer.json');
 
 /**
