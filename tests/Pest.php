@@ -2,11 +2,27 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Certificates\Tests\Fixtures\RegisteredCheckTestCase;
+use RoundlyConsulting\Certificates\Tests\Fixtures\SwappedCertificateTestCase;
 use RoundlyConsulting\Certificates\Tests\TestCase;
 use RoundlyConsulting\Crypto\Testing\TestCertificateChain;
 use RoundlyConsulting\Crypto\Testing\TestCertificates;
 
-uses(TestCase::class)->in(__DIR__);
+// Explicit paths, not `->in(__DIR__)`: the ModelSwap directory below needs a different
+// base case (certificates.model pointed at the host subclass BEFORE boot), and a blanket
+// bind would claim it first. ArchTest.php is listed because `swappableModelsAreNotFinal`
+// reads the `certificates.model` config default and so needs the app booted — an arch
+// file is not automatically test-cased.
+uses(TestCase::class)->in('ArchTest.php', 'Feature', 'Unit');
+
+// The model-swap proofs need `certificates.model` pointed at the host subclass BEFORE
+// the providers boot, so they run on their own base case in their own directory — Pest
+// binds a test case per directory, not per file.
+uses(SwappedCertificateTestCase::class)->in('ModelSwap');
+
+// The alert-channel wiring is read during the provider's boot(), so it too needs its
+// own before-boot base case and directory.
+uses(RegisteredCheckTestCase::class)->in('AlertsCheck');
 
 /**
  * A throwaway self-signed certificate (with SANs) and its private key.
