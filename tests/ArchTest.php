@@ -17,13 +17,12 @@ ArchPresets::strictTypes('RoundlyConsulting\Certificates');
  * `DnsChallengeSolver` as the abstract a host extends per DNS provider, and
  * `CertificateService`, the facade's backing service.
  */
-ArchPresets::finalByDefault('RoundlyConsulting\Certificates')
-    ->ignoring([
-        Certificate::class,
-        CertificateException::class,
-        DnsChallengeSolver::class,
-        CertificateService::class,
-    ]);
+ArchPresets::finalByDefault('RoundlyConsulting\Certificates', [
+    Certificate::class,
+    CertificateException::class,
+    DnsChallengeSolver::class,
+    CertificateService::class,
+]);
 
 /**
  * The counter-weight, and the fleet's 7×-shipped fatal: `final` on a config-swappable
