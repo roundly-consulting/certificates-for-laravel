@@ -333,8 +333,12 @@ it('persists the account kid for reuse', function (): void {
 
     makeProvider()->generate('generated-tls-app-com', 'app.com');
 
-    // The account is registered and its kid persisted for subsequent runs.
-    expect(Storage::disk('local')->exists('acme/account.pem.kid'))->toBeTrue();
+    // The account is registered and its kid persisted — for THIS directory — for
+    // subsequent runs.
+    $account = new AcmeAccount(disk: 'local', keyPath: 'acme/account.pem', keyType: 'EC');
+
+    expect($account->kid(DIR))->toBe('https://acme.test/acct/1')
+        ->and(Storage::disk('local')->exists('acme/account.pem.kid'))->toBeFalse();
 });
 
 it('reports pending when nothing is stored', function (): void {

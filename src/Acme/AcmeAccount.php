@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Certificates\Acme;
 use Illuminate\Support\Facades\Storage;
 use RoundlyConsulting\Certificates\Exceptions\AcmeException;
 use RoundlyConsulting\Crypto\Exceptions\CryptoException;
+use RoundlyConsulting\Crypto\Hash\Digest;
 use RoundlyConsulting\Crypto\Jose\Jwk;
 use RoundlyConsulting\Crypto\Signature\Key\EcKey;
 use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
@@ -20,6 +21,14 @@ use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
  * the key lives, which key types a CA accepts, and the kid the server hands
  * back. The curve label and the coordinate padding come from the key, so an EC
  * account key is always advertised as the curve it actually is.
+ *
+ * One key, many accounts: a kid is an URL on the CA that issued it, so it is recorded
+ * PER DIRECTORY (`{key_path}.{sha256(directory)}.kid`) and bound to the key it was
+ * registered with. Switching `directory` from staging to production therefore registers
+ * a production account instead of replaying staging's kid there, and a replaced key never
+ * signs under its predecessor's kid. The unkeyed `{key_path}.kid` earlier versions wrote
+ * names no CA and is ignored; re-registering is safe because a CA answers newAccount for
+ * a key it already knows with that same account (RFC 8555 §7.3.1).
  */
 final class AcmeAccount
 {
@@ -30,7 +39,8 @@ final class AcmeAccount
 
     private ?Jwk $jwk = null;
 
-    private ?string $kid = null;
+    /** @var array<string, string> directory URL => kid, for the loaded key */
+    private array $kids = [];
 
     public function __construct(
         private readonly string $disk = 'local',
@@ -51,6 +61,8 @@ final class AcmeAccount
 
         $this->key = $key;
         $this->jwk = null;
+        // Every kid known so far belongs to the key just replaced.
+        $this->kids = [];
 
         Storage::disk($this->disk)->put($this->keyPath, $pem);
     }
@@ -111,25 +123,46 @@ final class AcmeAccount
         return $this->jwk()->thumbprint();
     }
 
-    public function kid(): ?string
+    /**
+     * The kid this key was registered under at `$directory`, or null when it has not been
+     * registered there — including when the stored record belongs to another CA or to a
+     * key that has since been replaced.
+     */
+    public function kid(string $directory): ?string
     {
-        if ($this->kid !== null) {
-            return $this->kid;
+        if (isset($this->kids[$directory])) {
+            return $this->kids[$directory];
         }
 
         $disk = Storage::disk($this->disk);
+        $path = $this->kidPath($directory);
 
-        if ($disk->exists($this->kidPath())) {
-            return $this->kid = (string) $disk->get($this->kidPath());
+        if (! $disk->exists($path)) {
+            return null;
         }
 
-        return null;
+        $record = json_decode((string) $disk->get($path), true);
+
+        if (! is_array($record)
+            || ($record['directory'] ?? null) !== $directory
+            || ! is_string($record['kid'] ?? null)
+            || $record['kid'] === ''
+            || ($record['thumbprint'] ?? null) !== $this->thumbprint()) {
+            return null;
+        }
+
+        return $this->kids[$directory] = $record['kid'];
     }
 
-    public function setKid(string $kid): void
+    public function setKid(string $directory, string $kid): void
     {
-        $this->kid = $kid;
-        Storage::disk($this->disk)->put($this->kidPath(), $kid);
+        Storage::disk($this->disk)->put($this->kidPath($directory), (string) json_encode([
+            'directory' => $directory,
+            'kid' => $kid,
+            'thumbprint' => $this->thumbprint(),
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        $this->kids[$directory] = $kid;
     }
 
     /**
@@ -169,8 +202,8 @@ final class AcmeAccount
         }
     }
 
-    private function kidPath(): string
+    private function kidPath(string $directory): string
     {
-        return $this->keyPath.'.kid';
+        return $this->keyPath.'.'.(new Digest)->hex($directory).'.kid';
     }
 }

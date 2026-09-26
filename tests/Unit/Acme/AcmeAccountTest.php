@@ -129,15 +129,47 @@ it('throws when the stored account key is unreadable', function (): void {
 it('persists and reuses the account kid', function (): void {
     $account = account('EC');
     $account->generate();
-    $account->setKid('https://acme.test/acct/1');
+    $account->setKid('https://acme.test/directory', 'https://acme.test/acct/1');
 
-    expect(account('EC')->kid())->toBe('https://acme.test/acct/1')
-        ->and($account->kid())->toBe('https://acme.test/acct/1');
+    expect(account('EC')->kid('https://acme.test/directory'))->toBe('https://acme.test/acct/1')
+        ->and($account->kid('https://acme.test/directory'))->toBe('https://acme.test/acct/1');
 });
 
 it('has no kid before registration', function (): void {
-    expect(account('EC')->kid())->toBeNull();
+    expect(account('EC')->kid('https://acme.test/directory'))->toBeNull();
 });
+
+it('keeps a kid per directory', function (): void {
+    $account = storedAccount('EC');
+    $account->setKid('https://staging.acme.test/directory', 'https://staging.acme.test/acct/1');
+
+    expect(account('EC')->kid('https://prod.acme.test/directory'))->toBeNull()
+        ->and(account('EC')->kid('https://staging.acme.test/directory'))->toBe('https://staging.acme.test/acct/1');
+});
+
+it('forgets every kid when a new key is generated', function (): void {
+    $account = storedAccount('EC');
+    $account->setKid('https://acme.test/directory', 'https://acme.test/acct/1');
+    $account->generate();
+
+    // The record is still on the disk, but it names the old key's thumbprint.
+    expect($account->kid('https://acme.test/directory'))->toBeNull()
+        ->and(account('EC')->kid('https://acme.test/directory'))->toBeNull();
+});
+
+it('treats an unreadable kid record as unregistered', function (string $contents): void {
+    $account = storedAccount('EC');
+    $account->setKid('https://acme.test/directory', 'https://acme.test/acct/1');
+
+    $record = collect(Storage::disk('local')->files('acme'))->first(fn (string $path): bool => str_ends_with($path, '.kid'));
+    Storage::disk('local')->put($record, $contents);
+
+    expect(account('EC')->kid('https://acme.test/directory'))->toBeNull();
+})->with([
+    'not json' => ['https://acme.test/acct/1'],
+    'another directory' => ['{"directory":"https://other.test/directory","kid":"https://acme.test/acct/1","thumbprint":"'.EC_THUMBPRINT.'"}'],
+    'empty kid' => ['{"directory":"https://acme.test/directory","kid":"","thumbprint":"'.EC_THUMBPRINT.'"}'],
+]);
 
 it('computes the exact RFC 7638 thumbprint the pre-crypto code produced', function (string $type, string $expected): void {
     expect(storedAccount($type)->thumbprint())->toBe($expected);

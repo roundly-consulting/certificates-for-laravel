@@ -207,6 +207,14 @@ first use (`account.auto_register`): `key_type` `EC` mints a P-256 key, `RSA` a 
 account key you place on the disk yourself is used as-is — EC **P-256 and P-384** are both accepted,
 and each is signed under its own algorithm (`ES256` / `ES384`), which is what the CA expects.
 
+The account itself is recorded **per CA directory**, next to the key
+(`{key_path}.{sha256(directory)}.kid`), and bound to the key it was registered with. Switching
+`directory` from Let's Encrypt staging to production registers a production account on the next
+issue instead of replaying the staging account URL there, switching back reuses the staging one,
+and a replaced account key re-registers rather than signing under its predecessor's account. The
+single `{key_path}.kid` file earlier versions wrote names no CA and is ignored (left on disk);
+re-registering an already-known key is safe — the CA answers with the existing account.
+
 **DNS-01** is a documented extension point. Extend `ChallengeSolvers\DnsChallengeSolver`, implement
 `publishRecord()` / `removeRecord()` against your DNS provider, and register it via
 `drivers.acme.solver`:

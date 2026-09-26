@@ -68,11 +68,12 @@ final class AcmeClient
     }
 
     /**
-     * Register (or look up) the account, persisting the returned kid.
+     * Register (or look up) this key's account at THIS directory, persisting the returned
+     * kid under the directory — a kid from another CA is never reused here.
      */
     public function registerAccount(): string
     {
-        if (($kid = $this->account->kid()) !== null) {
+        if (($kid = $this->account->kid($this->directoryUrl)) !== null) {
             return $kid;
         }
 
@@ -94,7 +95,7 @@ final class AcmeClient
             throw AcmeException::accountFailed('the server did not return an account URL');
         }
 
-        $this->account->setKid($kid);
+        $this->account->setKid($this->directoryUrl, $kid);
 
         return $kid;
     }
@@ -272,7 +273,7 @@ final class AcmeClient
         // authenticates with the account kid the server handed back.
         $body = $useJwk
             ? $this->jws->signWithJwk($protected, $payload, $key, $this->account->jwk())
-            : $this->jws->signWithKid($protected, $payload, $key, (string) $this->account->kid());
+            : $this->jws->signWithKid($protected, $payload, $key, (string) $this->account->kid($this->directoryUrl));
 
         return $this->request()
             ->withBody((string) json_encode($body), 'application/jose+json')
