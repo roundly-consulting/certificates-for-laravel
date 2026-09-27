@@ -70,23 +70,5 @@ it('ships exactly the config keys it reads', function (): void {
             'certificates.drivers.array',
             'certificates.drivers.null',
         ],
-
-        // `certificates.providers.kubernetes` is a LEGACY ALIAS the package reads and
-        // does not ship: `CertificateManager::createKubernetesDriver()` resolves
-        // `certificates.drivers.kubernetes` and falls back to it. It is not dead code —
-        // two test files drive the fallback deliberately — so this is a real, supported,
-        // undocumented read rather than the shops #18 typo the forward direction hunts.
-        //
-        // Allowed rather than shipped, and NOT removed: dropping a config fallback is a
-        // config-semantics decision, not a test-machinery one. Under the no-BC window
-        // (nothing published, no consumers, still 1.0.0) the doctrine says a shim like
-        // this should simply be deleted along with the tests that pin it — RAISED for a
-        // decision rather than taken unilaterally here.
-        //
-        // `allowUnshipped` is rot-proof: if the fallback is ever removed, this entry
-        // silences nothing and fails as stale, so the list cannot outlive the read.
-        'allowUnshipped' => [
-            'certificates.providers.kubernetes',
-        ],
     ]);
 });

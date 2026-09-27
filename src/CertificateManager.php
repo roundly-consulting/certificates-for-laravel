@@ -48,8 +48,7 @@ final class CertificateManager extends Manager
     public function createKubernetesDriver(): CertificateProvider
     {
         /** @var array<string, mixed> $kubernetes */
-        $kubernetes = $this->config->get('certificates.drivers.kubernetes')
-            ?? $this->config->get('certificates.providers.kubernetes', []);
+        $kubernetes = $this->config->get('certificates.drivers.kubernetes', []);
 
         $verify = $kubernetes['ca_path'] ?? true;
 

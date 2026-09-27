@@ -28,15 +28,6 @@ it('resolves the null and array drivers', function (): void {
         ->and(manager()->provider('array'))->toBeInstanceOf(ArrayProvider::class);
 });
 
-it('falls back to the legacy providers config block', function (): void {
-    config()->set('certificates.drivers.kubernetes', null);
-    config()->set('certificates.providers.kubernetes.base_url', 'https://legacy.test');
-
-    app()->forgetInstance(CertificateManager::class);
-
-    expect(manager()->provider('kubernetes'))->toBeInstanceOf(KubernetesProvider::class);
-});
-
 it('throws a package exception for an unknown driver', function (): void {
     manager()->provider('does-not-exist');
 })->throws(UnknownProviderException::class);

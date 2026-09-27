@@ -9,8 +9,8 @@ it('reads the bearer token from a mounted file when no inline token is set', fun
     $tokenFile = tempnam(sys_get_temp_dir(), 'k8s-token');
     file_put_contents($tokenFile, "file-token\n");
 
-    config()->set('certificates.providers.kubernetes.token', null);
-    config()->set('certificates.providers.kubernetes.token_path', $tokenFile);
+    config()->set('certificates.drivers.kubernetes.token', null);
+    config()->set('certificates.drivers.kubernetes.token_path', $tokenFile);
 
     // Re-resolve the singleton with the new config.
     app()->forgetInstance(CertificateProvider::class);
@@ -21,8 +21,8 @@ it('reads the bearer token from a mounted file when no inline token is set', fun
 });
 
 it('resolves with an empty token when none is configured', function (): void {
-    config()->set('certificates.providers.kubernetes.token', null);
-    config()->set('certificates.providers.kubernetes.token_path', null);
+    config()->set('certificates.drivers.kubernetes.token', null);
+    config()->set('certificates.drivers.kubernetes.token_path', null);
 
     app()->forgetInstance(CertificateProvider::class);
 

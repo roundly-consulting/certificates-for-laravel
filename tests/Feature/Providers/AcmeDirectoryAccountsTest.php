@@ -112,20 +112,6 @@ it('keeps each directory its own account on the way back', function (): void {
     expect(kidOfLastOrder('https://staging.acme.test'))->toBe('https://staging.acme.test/acct/staging-1');
 });
 
-it('ignores the old unkeyed kid record instead of replaying it at another CA', function (): void {
-    // What every earlier version wrote: one kid next to the key, no CA recorded.
-    Storage::disk('local')->put('acme/account.pem', accountKeyPem('ec'));
-    Storage::disk('local')->put('acme/account.pem.kid', 'https://staging.acme.test/acct/staging-1');
-
-    $production = acmeClientFor(PRODUCTION);
-
-    expect($production->registerAccount())->toBe('https://prod.acme.test/acct/prod-1')
-        ->and(newAccountPostsTo('https://prod.acme.test'))->toHaveCount(1);
-
-    // Left in place: it is harmless, and deleting a file the host may still read is not ours to do.
-    Storage::disk('local')->assertExists('acme/account.pem.kid');
-});
-
 it('does not reuse a kid that was registered for a different account key', function (): void {
     acmeClientFor(STAGING)->registerAccount();
 

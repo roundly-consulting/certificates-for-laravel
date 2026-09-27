@@ -26,9 +26,8 @@ use RoundlyConsulting\Crypto\Signature\Key\RsaKey;
  * PER DIRECTORY (`{key_path}.{sha256(directory)}.kid`) and bound to the key it was
  * registered with. Switching `directory` from staging to production therefore registers
  * a production account instead of replaying staging's kid there, and a replaced key never
- * signs under its predecessor's kid. The unkeyed `{key_path}.kid` earlier versions wrote
- * names no CA and is ignored; re-registering is safe because a CA answers newAccount for
- * a key it already knows with that same account (RFC 8555 §7.3.1).
+ * signs under its predecessor's kid. Re-registering is safe because a CA answers
+ * newAccount for a key it already knows with that same account (RFC 8555 §7.3.1).
  */
 final class AcmeAccount
 {
