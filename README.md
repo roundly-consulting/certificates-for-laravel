@@ -6,6 +6,15 @@
 </p>
 <!-- roundly-hero:end -->
 
+<!-- roundly-badges:start -->
+<p align="center">
+  <a href="https://packagist.org/packages/roundly-consulting/certificates-for-laravel"><img src="https://img.shields.io/packagist/v/roundly-consulting/certificates-for-laravel?style=flat-square&label=release" alt="Latest release"></a>
+  <a href="https://github.com/roundly-consulting/certificates-for-laravel/actions/workflows/run-tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/roundly-consulting/certificates-for-laravel/run-tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
+  <a href="https://github.com/roundly-consulting/certificates-for-laravel/actions/workflows/fix-php-code-style-issues.yml"><img src="https://img.shields.io/github/actions/workflow/status/roundly-consulting/certificates-for-laravel/fix-php-code-style-issues.yml?branch=main&style=flat-square&label=code%20style" alt="Code style"></a>
+  <a href="https://donate.stripe.com/dRmeVe8FX5PF1Qd9pXcEw00"><img src="https://img.shields.io/badge/donate-support%20our%20open%20source-F24E29?style=flat-square&logo=stripe&logoColor=white" alt="Donate"></a>
+</p>
+<!-- roundly-badges:end -->
+
 # Certificates for Laravel
 
 Request, track, and renew the TLS certificates for your domains — directly from Laravel.
@@ -485,6 +494,17 @@ composer test
 ## Changelog
 
 See [CHANGELOG](CHANGELOG.md).
+
+<!-- roundly-support:start -->
+## Support our work
+
+This package is free and open source, built and maintained by
+[Roundly Consulting](https://roundly-consulting.com/open-source?utm_source=github&utm_medium=readme&utm_campaign=open-source&utm_content=certificates-for-laravel).
+If it saves you time, please consider supporting our open-source work — every donation helps fund
+maintenance, new features and new packages.
+
+<a href="https://donate.stripe.com/dRmeVe8FX5PF1Qd9pXcEw00"><img src="https://img.shields.io/badge/Donate-Support%20Roundly%20open%20source-F24E29?style=for-the-badge&logo=stripe&logoColor=white" alt="Donate to Roundly open source"></a>
+<!-- roundly-support:end -->
 
 ## License
 
