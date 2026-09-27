@@ -63,7 +63,7 @@ ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../composer.json');
 
 /**
  * Replaces the hand-written `['dd', 'dump', 'ray']` rule above, which had a hole exactly
- * where it mattered: Pest's arch layer only sees a symbol that EXISTS, and `acme/ray`
+ * where it mattered: Pest's arch layer only sees a symbol that EXISTS, and the `ray()` debugger package
  * is not in the dependency graph by policy, so `ray` was filtered out before the ban ran
  * and could never fail. The preset reads source tokens instead, and adds `var_dump` /
  * `print_r`, which this package never banned.
