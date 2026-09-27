@@ -6,6 +6,7 @@ use RoundlyConsulting\Certificates\CertificateManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Facades\Certificates;
+use RoundlyConsulting\Certificates\Tests\Fixtures\CountingStatusProvider;
 
 beforeEach(function (): void {
     config()->set('certificates.default', 'array');
