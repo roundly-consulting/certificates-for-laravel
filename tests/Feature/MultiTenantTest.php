@@ -127,3 +127,16 @@ it('scans the bound connection from the check command', function (): void {
     expect(Certificates::on('tenant')->expiring(7)->pluck('domain')->all())->toBe(['soon.tenant.com'])
         ->and(Certificates::expiring(7))->toBeEmpty();
 });
+
+/**
+ * Regression: the README promised "Every command also accepts --connection=", but
+ * certificates:issue had no such option — it failed with "The --connection option does
+ * not exist" — and called the action directly, bypassing the manager's connection.
+ */
+it('issues from the command line onto the chosen connection', function (): void {
+    $this->artisan('certificates:issue', ['domain' => 'cli.tenant.com', '--connection' => 'tenant'])
+        ->assertExitCode(0);
+
+    expect(Certificate::on('tenant')->where('domain', 'cli.tenant.com')->exists())->toBeTrue()
+        ->and(Certificate::query()->where('domain', 'cli.tenant.com')->exists())->toBeFalse();
+});

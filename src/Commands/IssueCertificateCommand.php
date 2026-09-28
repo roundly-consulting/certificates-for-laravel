@@ -5,17 +5,21 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Certificates\Commands;
 
 use Illuminate\Console\Command;
-use RoundlyConsulting\Certificates\Actions\IssueCertificateAction;
+use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 
+/**
+ * A thin caller of `Certificates::issue()` — through the manager, so `--connection`
+ * targets the tenant registry and `Certificates::fake()` records it.
+ */
 final class IssueCertificateCommand extends Command
 {
-    protected $signature = 'certificates:issue {domain} {--driver=}';
+    protected $signature = 'certificates:issue {domain} {--driver=} {--connection=}';
 
     protected $description = 'Issue a TLS certificate for a domain';
 
-    public function handle(IssueCertificateAction $action): int
+    public function handle(CertificatesManager $certificates): int
     {
         /** @var string $domain */
         $domain = $this->argument('domain');
@@ -23,7 +27,7 @@ final class IssueCertificateCommand extends Command
         $this->info((string) trans('certificates::messages.commands.issuing', ['domain' => $domain]));
 
         try {
-            $certificate = $action->execute(new IssueCertificateData(
+            $certificate = $certificates->on($this->stringOption('connection'))->issue(new IssueCertificateData(
                 domain: $domain,
                 driver: $this->stringOption('driver'),
             ));
