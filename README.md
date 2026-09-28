@@ -216,7 +216,7 @@ Certificates::for('app.example.com')->renew();           // same verbs on the do
 Certificates::for('app.example.com')->using('acme')->revoke(); // only the acme row is touched
 
 Certificates::expiring(14);                   // Collection<int, Certificate>, soonest first
-Certificates::renewDue();                     // renew everything inside renewal.threshold_days
+Certificates::renewDue();                     // renew everything inside renewal.threshold_days → RenewalReport
 Certificates::renewDue(7, queue: true);       // …or queue each one
 Certificates::sync('kubernetes');             // pull live provider state into the registry → int
 Certificates::prune(30);                      // soft-delete stale expired/failed/revoked rows → int
@@ -225,6 +225,25 @@ Certificates::prune(30);                      // soft-delete stale expired/faile
 A renewal the provider rejects moves the row to `Failed` and fires `CertificateFailed` before the
 exception is rethrown, so it raises an alert instead of sitting in `Renewing`. `revoke()` records
 the revocation in the registry; it does not contact the CA or the cluster.
+
+`renewDue()` attempts every due certificate on its own: one failure never stops the rest. It
+returns a `DataTransferObjects\RenewalReport` listing each certificate's outcome — `renewed`,
+`queued` (with `queue: true`) and `failed` (`RenewalFailure`: the certificate plus the exception,
+`reason()` for its message). Each failure is also passed to your exception handler. A failed inline
+renewal is `Failed` + `CertificateFailed` as above; a failed dispatch leaves the row untouched, so
+the next run retries it.
+
+```php
+$report = Certificates::renewDue();
+
+if ($report->hasFailures()) {
+    foreach ($report->failed as $failure) {
+        logger()->warning("Renewal failed for {$failure->certificate->domain}: {$failure->reason()}");
+    }
+}
+
+$report->renewedDomains();   // ['a.example.com', …]; also queuedDomains(), failedDomains(), count(), isEmpty()
+```
 
 ### Without the facade
 
@@ -445,6 +464,8 @@ Every command is a thin caller of the facade. `certificates:renew` runs `Certifi
 renewing every certificate expiring within the threshold and dispatching `CertificateExpiring` for
 each — or, given a domain, `Certificates::renew()` for its most recent row. Pass `--queue` to
 dispatch `RenewCertificateJob` onto the queue named by `renewal.queue` instead of renewing inline.
+It prints every certificate's outcome and exits non-zero when any renewal (or dispatch) failed, so
+the scheduler's failure hooks fire.
 `certificates:sync` and `certificates:prune` run `Certificates::sync()` / `Certificates::prune()`.
 
 ### Expiry monitoring via alerts
@@ -504,7 +525,7 @@ The package does not register a schedule — keep that in your app. A daily rene
 ```php
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::command('certificates:renew')->daily();
+Schedule::command('certificates:renew')->daily()->emailOutputOnFailure('ops@example.com');
 
 // or, without the command:
 Schedule::call(fn () => Certificates::renewDue(queue: true))->daily();
@@ -553,7 +574,9 @@ container, so constructor-injected `CertificatesManager`s, the `for()` handle an
 `HasCertificates::requestCertificate()` are all recorded. It never touches a provider, the registry,
 the queue or the event bus; every `driver()` is an in-memory `ArrayProvider`. Unknown domains and
 illegal status moves still throw, as they do for real. `$fake->seed($certificate)` stores a
-certificate without recording an issuance.
+certificate without recording an issuance, and `$fake->failRenewalOf($domain, …)` makes those
+renewals fail (the row turns `Failed`, `renew()` throws, `renewDue()` reports it under `failed`
+and carries on) so you can test how your code handles a `RenewalReport` with failures.
 
 | Call | Assertions |
 |---|---|
@@ -562,6 +585,7 @@ certificate without recording an issuance.
 | `renew`, `for()->renew()` (and inline `renewDue`) | `assertRenewed($domain)`, `assertNotRenewed($domain)`, `assertNothingRenewed()` |
 | `renewLater`, `for()->renewLater()` (and `renewDue(queue: true)`) | `assertRenewedLater($domain)`, `assertNothingRenewedLater()` |
 | `renewDue` | `assertRenewedDue(?$thresholdDays)`, `assertNothingRenewedDue()` |
+| a renewal failed via `failRenewalOf()` | `assertRenewalFailed($domain)`, `assertNoRenewalFailures()` |
 | `revoke`, `for()->revoke()` | `assertRevoked($domain, ?$reason)`, `assertNotRevoked($domain)`, `assertNothingRevoked()` |
 | `expire`, `for()->expire()` | `assertExpired($domain)`, `assertNothingExpired()` |
 | `sync` | `assertSynced(?$driver)`, `assertNothingSynced()` |

@@ -36,6 +36,9 @@ Initial public release.
   syncs and prunes (`assertRenewed()`, `assertRenewedLater()`, `assertRenewedDue()`,
   `assertRevoked()`, `assertExpired()`, `assertSynced()`, `assertPruned()` and their
   `assertNothing*()` / `assertNot*()` forms), and `seed()`s certificates it did not issue.
+- `Certificates::renewDue()` returns a `RenewalReport` (renewed / queued / failed, each failure a
+  `RenewalFailure` with its exception). The fake's `failRenewalOf()` simulates failures, checked
+  with `assertRenewalFailed()` / `assertNoRenewalFailures()`.
 
 ### Changed
 
@@ -44,7 +47,8 @@ Initial public release.
   facade root.
 - `certificates:renew`, `certificates:sync` and `certificates:prune` call the facade. Given a
   domain, `certificates:renew` renews its most recent registry row and no longer dispatches
-  `CertificateExpiring` for it.
+  `CertificateExpiring` for it. For the due set it prints each certificate's outcome and exits
+  non-zero when any failed.
 - Expiry monitoring schedules through alerts' `Health::for($notifiable)->monitor()`.
 
 ### Fixed
@@ -55,3 +59,6 @@ Initial public release.
   `CertificateFailed`, instead of leaving it stuck in `Renewing`.
 - `RenewCertificateJob` re-reads the certificate through the `certificates.model` seam, on the
   database connection it was queued from.
+- `Certificates::renewDue()` and `certificates:renew` stopped at the first certificate that failed
+  to renew (or to queue), silently skipping every later due certificate in that run. Each due
+  certificate is now attempted independently.
