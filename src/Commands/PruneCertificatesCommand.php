@@ -4,44 +4,28 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Commands;
 
-use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
-use RoundlyConsulting\Certificates\Enums\CertificateStatus;
-use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\CertificatesManager;
 
+/**
+ * A thin caller of `Certificates::prune()`.
+ */
 final class PruneCertificatesCommand extends Command
 {
     protected $signature = 'certificates:prune {--days=30} {--status=} {--connection=}';
 
     protected $description = 'Soft-delete stale expired/failed certificate records';
 
-    public function handle(): int
+    public function handle(CertificatesManager $certificates): int
     {
         $connection = is_string($connection = $this->option('connection')) && $connection !== ''
             ? $connection
             : null;
 
         $days = is_numeric($this->option('days')) ? (int) $this->option('days') : 30;
+        $status = is_string($status = $this->option('status')) && $status !== '' ? $status : null;
 
-        $query = CertificateModel::class()::on($connection)
-            ->where('updated_at', '<=', CarbonImmutable::now()->subDays($days));
-
-        if (is_string($status = $this->option('status')) && $status !== '') {
-            $query->where('status', $status);
-        } else {
-            $query->whereIn('status', [
-                CertificateStatus::Expired->value,
-                CertificateStatus::Failed->value,
-                CertificateStatus::Revoked->value,
-            ]);
-        }
-
-        $count = 0;
-
-        foreach ($query->get() as $certificate) {
-            $certificate->delete();
-            $count++;
-        }
+        $count = $certificates->on($connection)->prune($days, $status);
 
         $this->info((string) trans('certificates::messages.commands.pruned', ['count' => $count]));
 

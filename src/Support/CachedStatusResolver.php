@@ -6,7 +6,7 @@ namespace RoundlyConsulting\Certificates\Support;
 
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 
@@ -17,7 +17,7 @@ use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 final class CachedStatusResolver
 {
     public function __construct(
-        private readonly CertificateManager $manager,
+        private readonly CertificateProviderManager $manager,
     ) {}
 
     public function resolve(string $driver, string $name, string $domain, bool $fresh = false): ?CertificateStatusReport

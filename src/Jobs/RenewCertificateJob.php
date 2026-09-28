@@ -10,8 +10,13 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use RoundlyConsulting\Certificates\Actions\RenewCertificateAction;
-use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
+/**
+ * The queued form of a renewal, dispatched by `Certificates::renewLater()` and
+ * `Certificates::renewDue(queue: true)`. It re-reads the row through the
+ * `certificates.model` seam on the database connection it was queued from.
+ */
 final class RenewCertificateJob implements ShouldQueue
 {
     use Dispatchable;
@@ -21,6 +26,7 @@ final class RenewCertificateJob implements ShouldQueue
 
     public function __construct(
         public readonly int $certificateId,
+        public readonly ?string $databaseConnection = null,
     ) {
         $queue = config('certificates.renewal.queue');
 
@@ -31,7 +37,7 @@ final class RenewCertificateJob implements ShouldQueue
 
     public function handle(RenewCertificateAction $action): void
     {
-        $certificate = Certificate::query()->find($this->certificateId);
+        $certificate = CertificateModel::class()::on($this->databaseConnection)->find($this->certificateId);
 
         if ($certificate === null) {
             return;

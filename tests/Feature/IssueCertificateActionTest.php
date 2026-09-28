@@ -6,7 +6,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Certificates\Actions\IssueCertificateAction;
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
@@ -63,7 +63,7 @@ it('records a failure and rethrows when the provider throws', function (): void 
         }
     });
 
-    app(CertificateManager::class)
+    app(CertificateProviderManager::class)
         ->extend('failing', fn () => app('certificates.failing'));
 
     try {

@@ -5,61 +5,33 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Certificates\Commands;
 
 use Illuminate\Console\Command;
-use RoundlyConsulting\Certificates\CertificateManager;
-use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
-use RoundlyConsulting\Certificates\Enums\CertificateStatus;
-use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
+use RoundlyConsulting\Certificates\CertificatesManager;
 
+/**
+ * A thin caller of `Certificates::sync()`.
+ */
 final class SyncCertificatesCommand extends Command
 {
     protected $signature = 'certificates:sync {--driver=} {--connection=}';
 
     protected $description = 'Pull live provider state into the local registry';
 
-    public function handle(CertificateManager $manager): int
+    public function handle(CertificatesManager $certificates, CertificateProviderManager $providers): int
     {
         $connection = is_string($connection = $this->option('connection')) && $connection !== ''
             ? $connection
             : null;
 
-        $driverName = is_string($driver = $this->option('driver')) && $driver !== ''
+        $driver = is_string($driver = $this->option('driver')) && $driver !== ''
             ? $driver
-            : $manager->getDefaultDriver();
+            : $providers->getDefaultDriver();
 
-        $provider = $manager->provider($driverName);
-
-        $count = 0;
-
-        foreach ($provider->get() as $remote) {
-            $model = CertificateModel::class()::on($connection)->firstOrNew([
-                'driver' => $driverName,
-                'name' => $remote->name,
-            ]);
-
-            if ($connection !== null) {
-                $model->setConnection($connection);
-            }
-
-            $model->forceFill(['domain' => $remote->domain]);
-
-            if ($provider instanceof ReportsCertificateStatus) {
-                $report = $provider->status($remote->name, $remote->domain);
-                $model->forceFill([
-                    'status' => $report->status,
-                    'expires_at' => $report->expiresAt,
-                    'issuer' => $report->issuer ?? $model->issuer,
-                ]);
-            } elseif (! $model->exists) {
-                $model->forceFill(['status' => CertificateStatus::Issued]);
-            }
-
-            $model->save();
-            $count++;
-        }
+        $count = $certificates->on($connection)->sync($driver);
 
         $this->info((string) trans('certificates::messages.commands.synced', [
             'count' => $count,
-            'driver' => $driverName,
+            'driver' => $driver,
         ]));
 
         return self::SUCCESS;

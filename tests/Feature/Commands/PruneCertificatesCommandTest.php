@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
 
 afterEach(function (): void {
@@ -36,4 +37,14 @@ it('prunes by explicit status', function (): void {
         ->assertExitCode(0);
 
     expect(Certificate::query()->count())->toBe(0);
+});
+
+it('runs prune through the facade', function (): void {
+    $fake = Certificates::fake();
+
+    $this->artisan('certificates:prune', ['--days' => '14'])
+        ->expectsOutputToContain('Pruned 0 certificate(s).')
+        ->assertExitCode(0);
+
+    $fake->assertPruned(14);
 });

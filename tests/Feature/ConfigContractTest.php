@@ -15,7 +15,7 @@ it('ships exactly the config keys it reads', function (): void {
     expect(__DIR__.'/../../config/certificates.php')->toSatisfyConfigContract([__DIR__.'/../../src', __DIR__.'/../../database'], [
         // Several real reads never appear as a `config(` token: `certificates.model`
         // goes through the toolkit's `ModelResolver::for('certificates.model', …)` seam
-        // that drives the whole model swap, and `CertificateManager` takes an injected
+        // that drives the whole model swap, and `CertificateProviderManager` takes an injected
         // `Illuminate\Contracts\Config\Repository`. The prefix is what makes those
         // literals visible to the scraper.
         //
@@ -33,14 +33,14 @@ it('ships exactly the config keys it reads', function (): void {
         //
         // This is strictly better than `allowUnread`, which would assert a falsehood
         // about twenty live keys — every one of them steers a real driver decision.
-        // Getting here needed a rename in CertificateManager: all three factories read
+        // Getting here needed a rename in CertificateProviderManager: all three factories read
         // their section into a variable called `$config`, and `sectionVariables` is
         // FILE-scoped, so one mapping would have applied `$filesystem['disk']` under the
         // kubernetes prefix and invented reads of keys that do not exist. Naming each
         // section after its driver is a pure local rename with no behaviour change — and
         // `$kubernetes['base_url']` reads better than `$config['base_url']` anyway.
         'sectionVariables' => [
-            'CertificateManager.php' => [
+            'CertificateProviderManager.php' => [
                 '$kubernetes' => 'certificates.drivers.kubernetes',
                 '$filesystem' => 'certificates.drivers.filesystem',
                 '$acme' => 'certificates.drivers.acme',

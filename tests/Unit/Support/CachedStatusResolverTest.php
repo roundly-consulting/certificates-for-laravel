@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\Providers\NullProvider;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
@@ -10,14 +10,14 @@ use RoundlyConsulting\Certificates\Tests\Fixtures\CountingStatusProvider;
 
 function bindProvider(CertificateProvider $provider): void
 {
-    app(CertificateManager::class)->extend('array', fn (): CertificateProvider => $provider);
+    app(CertificateProviderManager::class)->extend('array', fn (): CertificateProvider => $provider);
 }
 
 it('caches the first lookup and serves the second from cache', function (): void {
     $provider = new CountingStatusProvider;
     bindProvider($provider);
 
-    $resolver = new CachedStatusResolver(app(CertificateManager::class));
+    $resolver = new CachedStatusResolver(app(CertificateProviderManager::class));
 
     $resolver->resolve('array', 'tls-app', 'app.com');
     $resolver->resolve('array', 'tls-app', 'app.com');
@@ -29,7 +29,7 @@ it('bypasses the cache and refreshes it when fresh is true', function (): void {
     $provider = new CountingStatusProvider;
     bindProvider($provider);
 
-    $resolver = new CachedStatusResolver(app(CertificateManager::class));
+    $resolver = new CachedStatusResolver(app(CertificateProviderManager::class));
 
     $resolver->resolve('array', 'tls-app', 'app.com');
     $resolver->resolve('array', 'tls-app', 'app.com', fresh: true);
@@ -42,7 +42,7 @@ it('always hits the provider when caching is disabled', function (): void {
     $provider = new CountingStatusProvider;
     bindProvider($provider);
 
-    $resolver = new CachedStatusResolver(app(CertificateManager::class));
+    $resolver = new CachedStatusResolver(app(CertificateProviderManager::class));
 
     $resolver->resolve('array', 'tls-app', 'app.com');
     $resolver->resolve('array', 'tls-app', 'app.com');
@@ -53,7 +53,7 @@ it('always hits the provider when caching is disabled', function (): void {
 it('returns null for a provider that does not report status', function (): void {
     bindProvider(new NullProvider);
 
-    $resolver = new CachedStatusResolver(app(CertificateManager::class));
+    $resolver = new CachedStatusResolver(app(CertificateProviderManager::class));
 
     expect($resolver->resolve('array', 'tls-app', 'app.com'))->toBeNull();
 });
@@ -62,7 +62,7 @@ it('forgets a cached entry', function (): void {
     $provider = new CountingStatusProvider;
     bindProvider($provider);
 
-    $resolver = new CachedStatusResolver(app(CertificateManager::class));
+    $resolver = new CachedStatusResolver(app(CertificateProviderManager::class));
 
     $resolver->resolve('array', 'tls-app', 'app.com');
     $resolver->forget('array', 'tls-app');
@@ -76,7 +76,7 @@ it('honours a custom cache store', function (): void {
     $provider = new CountingStatusProvider;
     bindProvider($provider);
 
-    $resolver = new CachedStatusResolver(app(CertificateManager::class));
+    $resolver = new CachedStatusResolver(app(CertificateProviderManager::class));
 
     $resolver->resolve('array', 'tls-app', 'app.com');
     $resolver->resolve('array', 'tls-app', 'app.com');

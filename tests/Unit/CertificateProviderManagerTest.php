@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Certificates\Acme\Csr;
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\ChallengeSolvers\DnsChallengeSolver;
 use RoundlyConsulting\Certificates\Contracts\AcmeChallengeSolver;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
@@ -14,9 +14,9 @@ use RoundlyConsulting\Certificates\Providers\KubernetesProvider;
 use RoundlyConsulting\Certificates\Providers\LocalFilesystemProvider;
 use RoundlyConsulting\Certificates\Providers\NullProvider;
 
-function manager(): CertificateManager
+function manager(): CertificateProviderManager
 {
-    return app(CertificateManager::class);
+    return app(CertificateProviderManager::class);
 }
 
 it('resolves the default kubernetes driver', function (): void {
@@ -51,7 +51,7 @@ it('resolves the acme driver', function (): void {
 it('honours a custom acme solver FQCN', function (): void {
     config()->set('certificates.drivers.acme.solver', RecordingDnsSolver::class);
 
-    app()->forgetInstance(CertificateManager::class);
+    app()->forgetInstance(CertificateProviderManager::class);
 
     // The provider builds without error and uses the configured solver.
     expect(manager()->provider('acme'))->toBeInstanceOf(AcmeProvider::class);

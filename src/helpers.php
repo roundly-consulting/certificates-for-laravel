@@ -2,14 +2,15 @@
 
 declare(strict_types=1);
 
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificatesManager;
 
 if (! function_exists('certificates')) {
     /**
-     * Resolve the certificate provider manager.
+     * Resolve the `Certificates` facade root — the same manager the facade and
+     * constructor injection give you (and the fake, once `Certificates::fake()` ran).
      */
-    function certificates(): CertificateManager
+    function certificates(): CertificatesManager
     {
-        return app(CertificateManager::class);
+        return app(CertificatesManager::class);
     }
 }

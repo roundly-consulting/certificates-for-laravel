@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Models\Certificate;
@@ -13,9 +13,9 @@ beforeEach(function (): void {
     config()->set('certificates.default', 'array');
 });
 
-function service(): CertificateService
+function service(): CertificatesManager
 {
-    return app(CertificateService::class);
+    return app(CertificatesManager::class);
 }
 
 it('derives a dns-safe certificate name with the configured prefix', function (): void {

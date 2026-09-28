@@ -23,9 +23,13 @@ use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
 
 /**
+ * The driver manager behind `Certificates::driver()` / `Certificates::extend()`: it
+ * builds and caches one CertificateProvider per configured driver. Host code rarely
+ * needs it directly — the facade root, `CertificatesManager`, is the public API.
+ *
  * @method CertificateProvider driver(?string $driver = null)
  */
-final class CertificateManager extends Manager
+final class CertificateProviderManager extends Manager
 {
     public function getDefaultDriver(): string
     {

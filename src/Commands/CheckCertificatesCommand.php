@@ -10,16 +10,17 @@ use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Alerts\Facades\Health;
 use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
 use RoundlyConsulting\Certificates\Alerts\ExpiryNotifiableResolver;
+use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\Events\CertificateExpiring as CertificateExpiringEvent;
 use RoundlyConsulting\Certificates\Models\Certificate;
-use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 /**
  * Read-only monitoring: scans the registry for certificates nearing expiry,
  * fires the CertificateExpiring event for each, and (opt-in) routes an expiry
  * health check through alerts-for-laravel so an Alert row + throttled
  * notification is produced by the engine. It never renews — that is
- * certificates:renew's job.
+ * certificates:renew's job. The scan is `Certificates::expiring()`; the alert is
+ * alerts' own `Health::for($notifiable)->run()`, so `Health::fake()` sees it.
  */
 final class CheckCertificatesCommand extends Command
 {
@@ -27,23 +28,16 @@ final class CheckCertificatesCommand extends Command
 
     protected $description = 'Scan for expiring certificates and optionally raise health alerts (never renews)';
 
-    public function handle(ExpiryNotifiableResolver $resolver): int
+    public function handle(CertificatesManager $manager, ExpiryNotifiableResolver $resolver): int
     {
         $connection = is_string($connection = $this->option('connection')) && $connection !== ''
             ? $connection
             : null;
 
-        $threshold = is_numeric($this->option('threshold'))
-            ? (int) $this->option('threshold')
-            : (int) config('certificates.renewal.threshold_days', 21);
+        $threshold = is_numeric($this->option('threshold')) ? (int) $this->option('threshold') : null;
+        $driver = is_string($driver = $this->option('driver')) && $driver !== '' ? $driver : null;
 
-        $query = CertificateModel::class()::on($connection)->expiring($threshold);
-
-        if (is_string($driver = $this->option('driver')) && $driver !== '') {
-            $query->forDriver($driver);
-        }
-
-        $certificates = $query->orderBy('expires_at')->get();
+        $certificates = $manager->on($connection)->expiring($threshold, $driver);
 
         if ($certificates->isEmpty()) {
             $this->info((string) trans('certificates::messages.commands.none_expiring'));
@@ -93,7 +87,7 @@ final class CheckCertificatesCommand extends Command
             return;
         }
 
-        Health::run(new CertificateExpiryCheck(certificateId: $certificate->id), $notifiable);
+        Health::for($notifiable)->run(new CertificateExpiryCheck(certificateId: $certificate->id));
 
         $this->info((string) trans('certificates::messages.commands.alerted', [
             'domain' => $certificate->domain,

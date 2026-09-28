@@ -36,6 +36,6 @@ final class AlertOnCertificateLifecycleFailure
             return;
         }
 
-        Health::run(new CertificateExpiryCheck(certificateId: $certificate->id), $notifiable);
+        Health::for($notifiable)->run(new CertificateExpiryCheck(certificateId: $certificate->id));
     }
 }

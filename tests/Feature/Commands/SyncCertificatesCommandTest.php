@@ -3,9 +3,10 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Collection;
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Providers\ArrayProvider;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
@@ -18,7 +19,7 @@ it('pulls live provider state into the registry', function (): void {
     $provider = new ArrayProvider;
     $provider->generate('generated-tls-a-com', 'a.example.com');
 
-    app(CertificateManager::class)->extend('array', fn () => $provider);
+    app(CertificateProviderManager::class)->extend('array', fn () => $provider);
 
     $this->artisan('certificates:sync', ['--driver' => 'array'])
         ->assertExitCode(0);
@@ -32,7 +33,7 @@ it('syncs using the default driver when none is given', function (): void {
     $provider = new ArrayProvider;
     $provider->generate('generated-tls-c-com', 'c.example.com');
 
-    app(CertificateManager::class)->extend('array', fn () => $provider);
+    app(CertificateProviderManager::class)->extend('array', fn () => $provider);
 
     $this->artisan('certificates:sync')->assertExitCode(0);
 
@@ -40,7 +41,7 @@ it('syncs using the default driver when none is given', function (): void {
 });
 
 it('syncs a provider without status reporting', function (): void {
-    app(CertificateManager::class)->extend('plain', fn () => new class implements CertificateProvider
+    app(CertificateProviderManager::class)->extend('plain', fn () => new class implements CertificateProvider
     {
         public function get(): Collection
         {
@@ -60,4 +61,23 @@ it('syncs a provider without status reporting', function (): void {
 
     expect(Certificate::query()->forDomain('b.example.com')->first()->status)
         ->toBe(CertificateStatus::Issued);
+});
+
+it('reports the synced count and driver', function (): void {
+    $provider = new ArrayProvider;
+    $provider->generate('generated-tls-d-com', 'd.example.com');
+
+    app(CertificateProviderManager::class)->extend('array', fn () => $provider);
+
+    $this->artisan('certificates:sync')
+        ->expectsOutputToContain('Synced 1 certificate(s) from the array provider.')
+        ->assertExitCode(0);
+});
+
+it('runs sync through the facade', function (): void {
+    $fake = Certificates::fake();
+
+    $this->artisan('certificates:sync', ['--driver' => 'kubernetes'])->assertExitCode(0);
+
+    $fake->assertSynced('kubernetes');
 });

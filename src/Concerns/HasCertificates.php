@@ -7,8 +7,8 @@ namespace RoundlyConsulting\Certificates\Concerns;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
-use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 
@@ -25,9 +25,13 @@ trait HasCertificates
         return $this->morphMany(CertificateModel::class(), 'certifiable');
     }
 
+    /**
+     * Issue a certificate owned by this model — through the manager, so
+     * `Certificates::fake()` records it.
+     */
     public function requestCertificate(string $domain, ?string $driver = null): Certificate
     {
-        return Certificates::issue(new IssueCertificateData(
+        return app(CertificatesManager::class)->issue(new IssueCertificateData(
             domain: $domain,
             driver: $driver,
             owner: $this,

@@ -3,16 +3,16 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Http;
-use RoundlyConsulting\Certificates\CertificateManager;
-use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
+use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Providers\KubernetesProvider;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 it('resolves the service, manager, and a kubernetes provider from the container', function (): void {
-    expect(app(CertificateService::class))->toBeInstanceOf(CertificateService::class);
-    expect(app(CertificateManager::class))->toBeInstanceOf(CertificateManager::class);
+    expect(app(CertificatesManager::class))->toBeInstanceOf(CertificatesManager::class);
+    expect(app(CertificateProviderManager::class))->toBeInstanceOf(CertificateProviderManager::class);
     expect(app(CertificateProvider::class))->toBeInstanceOf(KubernetesProvider::class);
 });
 

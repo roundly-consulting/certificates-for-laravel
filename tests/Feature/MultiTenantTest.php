@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\CertificatesManager;
+use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Providers\ArrayProvider;
 
 beforeEach(function (): void {
     config()->set('certificates.default', 'array');
@@ -63,7 +65,7 @@ it('finds records on the bound connection only', function (): void {
 });
 
 it('returns a distinct clone leaving the original unchanged', function (): void {
-    $service = app(CertificateService::class);
+    $service = app(CertificatesManager::class);
     $bound = $service->on('tenant');
 
     expect($bound)->not->toBe($service);
@@ -92,4 +94,36 @@ it('operates on tenant rows from the list command', function (): void {
     $this->artisan('certificates:list --connection=tenant')
         ->expectsOutputToContain('tenant.com')
         ->assertSuccessful();
+});
+
+it('syncs, renews, revokes and prunes on the bound connection only', function (): void {
+    $provider = new ArrayProvider;
+    $provider->generate('generated-tls-synced-com', 'synced.com');
+    Certificates::extend('array', fn (): CertificateProvider => $provider);
+
+    $this->artisan('certificates:sync --connection=tenant')->assertSuccessful();
+
+    expect(Certificate::on('tenant')->where('domain', 'synced.com')->exists())->toBeTrue()
+        ->and(Certificate::query()->where('domain', 'synced.com')->exists())->toBeFalse()
+        ->and(Certificates::on('tenant')->renew('synced.com')->status)->toBe(CertificateStatus::Renewed)
+        ->and(Certificates::on('tenant')->revoke('synced.com')->getConnectionName())->toBe('tenant');
+
+    $this->travel(31)->days();
+
+    $this->artisan('certificates:prune --connection=tenant')
+        ->expectsOutputToContain('Pruned 1 certificate(s).')
+        ->assertSuccessful();
+
+    expect(Certificate::on('tenant')->count())->toBe(0);
+});
+
+it('scans the bound connection from the check command', function (): void {
+    Certificate::factory()->connection('tenant')->expiring(3)->create(['domain' => 'soon.tenant.com', 'driver' => 'array']);
+
+    $this->artisan('certificates:check --connection=tenant')
+        ->expectsOutputToContain('soon.tenant.com')
+        ->assertSuccessful();
+
+    expect(Certificates::on('tenant')->expiring(7)->pluck('domain')->all())->toBe(['soon.tenant.com'])
+        ->and(Certificates::expiring(7))->toBeEmpty();
 });

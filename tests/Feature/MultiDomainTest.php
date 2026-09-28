@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Schema;
 use RoundlyConsulting\Certificates\Actions\IssueCertificateAction;
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Exceptions\InvalidDomainException;
@@ -22,7 +22,7 @@ it('has a domains column on the certificates table', function (): void {
 
 it('issues a SAN certificate from an array of domains via the builder', function (): void {
     $array = new ArrayProvider;
-    app(CertificateManager::class)->extend('array', fn (): CertificateProvider => $array);
+    app(CertificateProviderManager::class)->extend('array', fn (): CertificateProvider => $array);
 
     Certificates::for(['app.com', '*.app.com'])->using('array')->issue();
 
@@ -32,7 +32,7 @@ it('issues a SAN certificate from an array of domains via the builder', function
 
 it('appends SANs fluently with alsoFor', function (): void {
     $array = new ArrayProvider;
-    app(CertificateManager::class)->extend('array', fn (): CertificateProvider => $array);
+    app(CertificateProviderManager::class)->extend('array', fn (): CertificateProvider => $array);
 
     Certificates::for('app.com')->alsoFor('www.app.com', 'api.app.com')->using('array')->issue();
 
@@ -41,7 +41,7 @@ it('appends SANs fluently with alsoFor', function (): void {
 
 it('persists SAN domains on the registry record', function (): void {
     $array = new ArrayProvider;
-    app(CertificateManager::class)->extend('array', fn (): CertificateProvider => $array);
+    app(CertificateProviderManager::class)->extend('array', fn (): CertificateProvider => $array);
 
     Certificates::for(['app.com', 'www.app.com'])->using('array')->issue();
 
@@ -52,7 +52,7 @@ it('persists SAN domains on the registry record', function (): void {
 
 it('falls back to single generate for one domain', function (): void {
     $array = new ArrayProvider;
-    app(CertificateManager::class)->extend('array', fn (): CertificateProvider => $array);
+    app(CertificateProviderManager::class)->extend('array', fn (): CertificateProvider => $array);
 
     Certificates::for('only.com')->using('array')->issue();
 

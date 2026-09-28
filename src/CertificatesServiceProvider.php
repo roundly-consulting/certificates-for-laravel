@@ -80,14 +80,14 @@ final class CertificatesServiceProvider extends PackageServiceProvider
         parent::register();
 
         $this->app->singleton(
-            CertificateManager::class,
-            fn (Application $app): CertificateManager => new CertificateManager($app),
+            CertificateProviderManager::class,
+            fn (Application $app): CertificateProviderManager => new CertificateProviderManager($app),
         );
 
         // Default provider (the active driver) for code that type-hints the contract.
         $this->app->singleton(
             CertificateProvider::class,
-            fn (Application $app): CertificateProvider => $app->make(CertificateManager::class)->provider(),
+            fn (Application $app): CertificateProvider => $app->make(CertificateProviderManager::class)->provider(),
         );
 
         // Default certificate store + challenge solver, overridable by host apps.
@@ -116,15 +116,15 @@ final class CertificatesServiceProvider extends PackageServiceProvider
         $this->app->singleton(
             CachedStatusResolver::class,
             fn (Application $app): CachedStatusResolver => new CachedStatusResolver(
-                $app->make(CertificateManager::class),
+                $app->make(CertificateProviderManager::class),
             ),
         );
 
         $this->app->singleton(
-            CertificateService::class,
-            fn (Application $app): CertificateService => new CertificateService(
-                $app->make(CertificateManager::class),
-                $app->make(Actions\IssueCertificateAction::class),
+            CertificatesManager::class,
+            fn (Application $app): CertificatesManager => new CertificatesManager(
+                $app,
+                $app->make(CertificateProviderManager::class),
                 $app->make(CachedStatusResolver::class),
             ),
         );

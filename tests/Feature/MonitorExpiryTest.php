@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Alerts\Facades\Health;
 use RoundlyConsulting\Alerts\HealthCheck;
 use RoundlyConsulting\Alerts\Support\PendingScheduledCheck;
+use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
@@ -56,3 +58,13 @@ it('throws when no notifiable can be resolved', function (): void {
 
     Certificates::monitorExpiry($cert);
 })->throws(CertificateException::class);
+
+it('schedules through alerts, so Health::fake() records the monitor', function (): void {
+    $health = Health::fake();
+    $cert = Certificate::factory()->issued()->create(['domain' => 'faked.com', 'driver' => 'array']);
+    $team = AlertTeam::query()->create(['name' => 'ops']);
+
+    Certificates::monitorExpiry($cert, $team)->daily()->save();
+
+    $health->assertMonitored(CertificateExpiryCheck::class, $team);
+});

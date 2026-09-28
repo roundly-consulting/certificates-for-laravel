@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Certificates\Events\CertificateExpired;
 use RoundlyConsulting\Certificates\Events\CertificateRevoked;
+use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Tests\Fixtures\AlertTeam;
 
@@ -34,8 +35,8 @@ it('opens an alert on revoke when alerts are enabled', function (): void {
     config()->set('certificates.alerts.notifiable', get_class($team));
     app()->instance(get_class($team), $team);
 
-    $cert = Certificate::factory()->issued()->create(['domain' => 'rev.com', 'driver' => 'array']);
-    $cert->markRevoked();
+    Certificate::factory()->issued()->create(['domain' => 'rev.com', 'driver' => 'array']);
+    Certificates::revoke('rev.com', 'key compromise');
 
     expect($team->alerts()->whereNull('recovered_at')->count())->toBe(1);
 });
@@ -47,7 +48,7 @@ it('opens an alert on a failure event via the certifiable owner', function (): v
     $cert = Certificate::factory()->issued()->create(['domain' => 'fail.com', 'driver' => 'array']);
     $cert->certifiable()->associate($team)->save();
 
-    $cert->markExpired();
+    Certificates::expire($cert);
 
     expect($team->alerts()->count())->toBe(1);
 });

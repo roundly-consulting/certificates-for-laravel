@@ -6,12 +6,20 @@ namespace RoundlyConsulting\Certificates\Support;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Traits\Macroable;
-use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 
+/**
+ * `Certificates::for($domain)` — the handle for one domain (or a SAN set led by its
+ * first domain). Configure and issue a certificate fluently, read its state, or run a
+ * lifecycle verb on its registry row. Every call goes through CertificatesManager, so
+ * `Certificates::fake()` records it; `using($driver)` also scopes the row lookup, so a
+ * handle never acts on another driver's row for the same domain.
+ */
 final class CertificateBuilder
 {
     use Macroable;
@@ -37,10 +45,12 @@ final class CertificateBuilder
     private bool $fresh = false;
 
     /**
+     * @internal build it with `Certificates::for($domain)`
+     *
      * @param  string|list<string>  $domain
      */
     public function __construct(
-        private readonly CertificateService $service,
+        private readonly CertificatesManager $manager,
         string|array $domain,
     ) {
         $this->domains = is_array($domain) ? $domain : [$domain];
@@ -110,7 +120,7 @@ final class CertificateBuilder
 
     public function issue(): Certificate
     {
-        return $this->service->issue($this->toData());
+        return $this->manager->issue($this->toData());
     }
 
     public function issueIfMissing(): Certificate
@@ -126,22 +136,67 @@ final class CertificateBuilder
 
     public function exists(): bool
     {
-        return $this->service->exists($this->domain);
+        return $this->manager->exists($this->domain);
     }
 
     public function status(): ?CertificateStatus
     {
-        return $this->service->status($this->domain);
+        return $this->manager->status($this->domain);
     }
 
     public function statusReport(): ?CertificateStatusReport
     {
-        return $this->service->statusReport($this->domain, $this->driver, $this->fresh);
+        return $this->manager->statusReport($this->domain, $this->driver, $this->fresh);
     }
 
     public function find(): ?Certificate
     {
-        return $this->service->find($this->domain, $this->driver);
+        return $this->manager->find($this->domain, $this->driver);
+    }
+
+    /**
+     * Renew this domain's registry certificate now.
+     *
+     * @throws CertificateException when the domain (on the chosen driver) has no registry row
+     */
+    public function renew(): Certificate
+    {
+        return $this->manager->renew($this->registered());
+    }
+
+    /**
+     * Queue a renewal of this domain's registry certificate.
+     *
+     * @throws CertificateException when the domain (on the chosen driver) has no registry row
+     */
+    public function renewLater(): Certificate
+    {
+        return $this->manager->renewLater($this->registered());
+    }
+
+    /**
+     * Record a revocation of this domain's registry certificate.
+     *
+     * @throws CertificateException when the domain (on the chosen driver) has no registry row
+     */
+    public function revoke(?string $reason = null): Certificate
+    {
+        return $this->manager->revoke($this->registered(), $reason);
+    }
+
+    /**
+     * Mark this domain's registry certificate expired.
+     *
+     * @throws CertificateException when the domain (on the chosen driver) has no registry row
+     */
+    public function expire(): Certificate
+    {
+        return $this->manager->expire($this->registered());
+    }
+
+    private function registered(): Certificate
+    {
+        return $this->find() ?? throw CertificateException::notFound($this->domain);
     }
 
     private function toData(): IssueCertificateData

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Facades\Certificates;
@@ -14,7 +14,7 @@ beforeEach(function (): void {
 
 it('returns a cached status report via the service', function (): void {
     $provider = new CountingStatusProvider;
-    app(CertificateManager::class)->extend('array', fn (): CertificateProvider => $provider);
+    app(CertificateProviderManager::class)->extend('array', fn (): CertificateProvider => $provider);
 
     $report = Certificates::statusReport('app.com');
 
@@ -27,7 +27,7 @@ it('returns a cached status report via the service', function (): void {
 
 it('bypasses the cache from the builder fresh() method', function (): void {
     $provider = new CountingStatusProvider;
-    app(CertificateManager::class)->extend('array', fn (): CertificateProvider => $provider);
+    app(CertificateProviderManager::class)->extend('array', fn (): CertificateProvider => $provider);
 
     Certificates::for('app.com')->statusReport();
     Certificates::for('app.com')->fresh()->statusReport();

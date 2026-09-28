@@ -107,6 +107,9 @@ class Certificate extends Model
         return (int) CarbonImmutable::now()->startOfDay()->diffInDays($this->expires_at->startOfDay(), false);
     }
 
+    /**
+     * @internal lifecycle mutator behind IssueCertificateAction — issue through `Certificates::issue()`
+     */
     public function markIssued(CarbonInterface $expiresAt): self
     {
         $this->forceFill([
@@ -119,6 +122,9 @@ class Certificate extends Model
         return $this;
     }
 
+    /**
+     * @internal lifecycle mutator behind RenewCertificateAction — renew through `Certificates::renew()`
+     */
     public function markRenewed(CarbonInterface $expiresAt): self
     {
         $this->forceFill([
@@ -131,6 +137,9 @@ class Certificate extends Model
         return $this;
     }
 
+    /**
+     * @internal lifecycle mutator behind the issue/renew actions
+     */
     public function markFailed(?string $reason = null): self
     {
         $this->forceFill([
@@ -143,6 +152,9 @@ class Certificate extends Model
 
     /**
      * Mark the certificate as revoked and dispatch the CertificateRevoked event.
+     *
+     * @internal lifecycle mutator behind RevokeCertificateAction — revoke through
+     *           `Certificates::revoke()`, which also guards the transition and is faked
      */
     public function markRevoked(?string $reason = null): self
     {
@@ -158,6 +170,9 @@ class Certificate extends Model
 
     /**
      * Mark the certificate as expired and dispatch the CertificateExpired event.
+     *
+     * @internal lifecycle mutator behind ExpireCertificateAction — expire through
+     *           `Certificates::expire()`, which also guards the transition and is faked
      */
     public function markExpired(): self
     {

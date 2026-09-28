@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\ChallengeSolvers\DnsChallengeSolver;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Models\Certificate;
@@ -15,13 +15,14 @@ ArchPresets::strictTypes('RoundlyConsulting\Certificates');
  * host to subclass (pinned by the preset below instead), `CertificateException` as the
  * base every certificates error extends so a host can catch them uniformly,
  * `DnsChallengeSolver` as the abstract a host extends per DNS provider, and
- * `CertificateService`, the facade's backing service.
+ * `CertificatesManager`, the facade root that `CertificatesFake` extends (a fake must be a
+ * subtype of the accessor, or constructor-injected managers TypeError under the fake).
  */
 ArchPresets::finalByDefault('RoundlyConsulting\Certificates', [
     Certificate::class,
     CertificateException::class,
     DnsChallengeSolver::class,
-    CertificateService::class,
+    CertificatesManager::class,
 ]);
 
 /**
@@ -60,6 +61,12 @@ ArchPresets::modelsResolveThroughSeam(__DIR__.'/../src', 'Support');
 ArchPresets::morphColumnsUseTheSeam(__DIR__.'/../database/migrations');
 
 ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../composer.json');
+
+/**
+ * One path: the Certificate model and the HasCertificates trait reach behaviour through
+ * CertificatesManager, never an action, so `Certificates::fake()` sees every call.
+ */
+ArchPresets::modelsGoThroughTheFacade('RoundlyConsulting\Certificates');
 
 /**
  * Replaces the hand-written `['dd', 'dump', 'ray']` rule above, which had a hole exactly

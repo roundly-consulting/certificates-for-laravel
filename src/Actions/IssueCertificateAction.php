@@ -9,7 +9,7 @@ use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
-use RoundlyConsulting\Certificates\CertificateManager;
+use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\ProvisionsMultipleDomains;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
@@ -23,10 +23,16 @@ use RoundlyConsulting\Certificates\Rules\ValidDomain;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 use Throwable;
 
-final class IssueCertificateAction
+/**
+ * Issue (or re-issue) a certificate: validate every domain, upsert the registry row,
+ * provision it through the driver under a per-name cache lock, and record the outcome.
+ *
+ * Reach it through `Certificates::issue()` / `Certificates::for($domain)->issue()`.
+ */
+final readonly class IssueCertificateAction
 {
     public function __construct(
-        private readonly CertificateManager $manager,
+        private CertificateProviderManager $manager,
     ) {}
 
     public function execute(IssueCertificateData $data, ?string $connection = null): Certificate

@@ -6,6 +6,7 @@ return [
     'invalid_domain' => 'The domain ":domain" is not a valid hostname.',
     'unknown_provider' => 'Certificate provider driver ":driver" is not defined.',
     'illegal_transition' => 'Cannot transition a certificate from ":from" to ":to".',
+    'not_found' => 'No certificate is registered for ":domain".',
 
     'commands' => [
         'issuing' => 'Issuing certificate for :domain...',

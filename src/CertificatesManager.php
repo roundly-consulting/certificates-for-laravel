@@ -4,15 +4,25 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates;
 
+use Closure;
 use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Container\Container;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Macroable;
+use RoundlyConsulting\Alerts\HealthManager;
 use RoundlyConsulting\Alerts\Support\PendingScheduledCheck;
+use RoundlyConsulting\Certificates\Actions\ExpireCertificateAction;
 use RoundlyConsulting\Certificates\Actions\IssueCertificateAction;
+use RoundlyConsulting\Certificates\Actions\PruneCertificatesAction;
+use RoundlyConsulting\Certificates\Actions\RenewCertificateAction;
+use RoundlyConsulting\Certificates\Actions\RenewDueCertificatesAction;
+use RoundlyConsulting\Certificates\Actions\RevokeCertificateAction;
+use RoundlyConsulting\Certificates\Actions\SyncCertificatesAction;
 use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
 use RoundlyConsulting\Certificates\Alerts\ExpiryNotifiableResolver;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
@@ -20,23 +30,31 @@ use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
+use RoundlyConsulting\Certificates\Jobs\RenewCertificateJob;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateBuilder;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
-class CertificateService
+/**
+ * The `Certificates` facade root — inject it to use the same API without the facade.
+ *
+ * Every state-changing method resolves its action from the container, so a host
+ * override of an action and `Certificates::fake()` both see every call. Deliberately not
+ * final: the fake extends it, so constructor-injected code keeps working under the fake.
+ */
+class CertificatesManager
 {
     use Macroable;
 
     protected ?string $connection = null;
 
-    private ?CachedStatusResolver $statusResolver = null;
+    private ?CachedStatusResolver $statusResolver;
 
     public function __construct(
-        protected readonly CertificateManager $manager,
-        protected readonly IssueCertificateAction $issueAction,
+        protected readonly Container $container,
+        protected readonly CertificateProviderManager $providers,
         ?CachedStatusResolver $statusResolver = null,
         ?string $connection = null,
     ) {
@@ -64,7 +82,7 @@ class CertificateService
      */
     public function get(): Collection
     {
-        return $this->manager->provider()->get();
+        return $this->providers->provider()->get();
     }
 
     /**
@@ -72,7 +90,7 @@ class CertificateService
      */
     public function exists(string $domain): bool
     {
-        return $this->manager->provider()->exists($this->certificateName($domain), $domain);
+        return $this->providers->provider()->exists($this->certificateName($domain), $domain);
     }
 
     /**
@@ -85,7 +103,7 @@ class CertificateService
     public function generate(string $domain): bool
     {
         if ($this->registryAvailable()) {
-            $this->issueAction->execute(IssueCertificateData::make($domain), $this->connection);
+            $this->issue(IssueCertificateData::make($domain));
 
             return true;
         }
@@ -98,7 +116,7 @@ class CertificateService
         }
 
         try {
-            $this->manager->provider()->generate($name, $domain);
+            $this->providers->provider()->generate($name, $domain);
         } finally {
             $lock->release();
         }
@@ -111,7 +129,7 @@ class CertificateService
      */
     public function issue(IssueCertificateData $data): Certificate
     {
-        return $this->issueAction->execute($data, $this->connection);
+        return $this->container->make(IssueCertificateAction::class)->execute($data, $this->connection);
     }
 
     /**
@@ -129,7 +147,8 @@ class CertificateService
     }
 
     /**
-     * Begin a fluent issuance for a domain (or set of SAN domains).
+     * A handle for one domain (or set of SAN domains): fluent issuance plus the
+     * lifecycle verbs (renew, renewLater, revoke, expire) and reads for that domain.
      *
      * @param  string|list<string>  $domain
      */
@@ -167,9 +186,101 @@ class CertificateService
      */
     public function statusReport(string $domain, ?string $driver = null, bool $fresh = false): ?CertificateStatusReport
     {
-        $driver ??= $this->manager->getDefaultDriver();
+        $driver ??= $this->providers->getDefaultDriver();
 
         return $this->resolver()->resolve($driver, $this->certificateName($domain), $domain, $fresh);
+    }
+
+    /**
+     * Active registry certificates expiring within `$days` (default:
+     * `certificates.renewal.threshold_days`), soonest first.
+     *
+     * @return EloquentCollection<int, Certificate>
+     */
+    public function expiring(?int $days = null, ?string $driver = null): EloquentCollection
+    {
+        return CertificateModel::class()::on($this->connection)
+            ->expiring($days)
+            ->when($driver !== null, fn ($query) => $query->forDriver($driver))
+            ->orderBy('expires_at')
+            ->get();
+    }
+
+    /**
+     * Renew a certificate now, through its own driver. A domain resolves to its most
+     * recent registry row.
+     *
+     * @throws CertificateException when the domain has no registry row or its status cannot renew
+     */
+    public function renew(Certificate|string $certificate): Certificate
+    {
+        return $this->container->make(RenewCertificateAction::class)->execute($this->resolve($certificate));
+    }
+
+    /**
+     * Queue a renewal (RenewCertificateJob on `certificates.renewal.queue`).
+     *
+     * @throws CertificateException when the domain has no registry row
+     */
+    public function renewLater(Certificate|string $certificate): Certificate
+    {
+        $certificate = $this->resolve($certificate);
+
+        RenewCertificateJob::dispatch($certificate->id, $certificate->getConnectionName());
+
+        return $certificate;
+    }
+
+    /**
+     * Renew — inline, or queued with `$queue` — every certificate expiring within the
+     * threshold, dispatching CertificateExpiring for each.
+     *
+     * @return EloquentCollection<int, Certificate> the certificates that were due
+     */
+    public function renewDue(?int $thresholdDays = null, bool $queue = false): EloquentCollection
+    {
+        return $this->container->make(RenewDueCertificatesAction::class)->execute($thresholdDays, $queue, $this->connection);
+    }
+
+    /**
+     * Record a revocation in the registry and dispatch CertificateRevoked.
+     *
+     * @throws CertificateException when the domain has no registry row or its status cannot be revoked
+     */
+    public function revoke(Certificate|string $certificate, ?string $reason = null): Certificate
+    {
+        return $this->container->make(RevokeCertificateAction::class)->execute($this->resolve($certificate), $reason);
+    }
+
+    /**
+     * Mark a certificate expired and dispatch CertificateExpired.
+     *
+     * @throws CertificateException when the domain has no registry row or its status cannot expire
+     */
+    public function expire(Certificate|string $certificate): Certificate
+    {
+        return $this->container->make(ExpireCertificateAction::class)->execute($this->resolve($certificate));
+    }
+
+    /**
+     * Pull a driver's live certificates (default driver when null) into the registry.
+     *
+     * @return int how many remote certificates were written
+     */
+    public function sync(?string $driver = null): int
+    {
+        return $this->container->make(SyncCertificatesAction::class)->execute($driver, $this->connection);
+    }
+
+    /**
+     * Soft-delete registry rows untouched for `$days` days — expired, failed and revoked
+     * ones, or exactly `$status` when given.
+     *
+     * @return int how many rows were pruned
+     */
+    public function prune(int $days = 30, CertificateStatus|string|null $status = null): int
+    {
+        return $this->container->make(PruneCertificatesAction::class)->execute($days, $status, $this->connection);
     }
 
     /**
@@ -183,13 +294,15 @@ class CertificateService
      */
     public function monitorExpiry(Certificate $certificate, ?Model $notifiable = null): PendingScheduledCheck
     {
-        $target = app(ExpiryNotifiableResolver::class)->resolve($certificate, $notifiable);
+        $target = $this->container->make(ExpiryNotifiableResolver::class)->resolve($certificate, $notifiable);
 
         if ($target === null) {
             throw CertificateException::noAlertNotifiable($certificate->domain);
         }
 
-        return (new PendingScheduledCheck($target, CertificateExpiryCheck::class))
+        return $this->container->make(HealthManager::class)
+            ->for($target)
+            ->monitor(CertificateExpiryCheck::class)
             ->tags(['certificates'])
             ->meta(['certificate_id' => $certificate->id]);
     }
@@ -199,7 +312,19 @@ class CertificateService
      */
     public function driver(?string $name = null): CertificateProvider
     {
-        return $this->manager->provider($name);
+        return $this->providers->provider($name);
+    }
+
+    /**
+     * Register a custom provider driver.
+     *
+     * @param  Closure(Container): CertificateProvider  $callback
+     */
+    public function extend(string $driver, Closure $callback): static
+    {
+        $this->providers->extend($driver, $callback);
+
+        return $this;
     }
 
     /**
@@ -212,6 +337,20 @@ class CertificateService
         return $prefix.Str::of($domain)->kebab()->replace(['.', ':'], '-')->value();
     }
 
+    /**
+     * A registry row as given, or a domain's most recent row.
+     *
+     * @throws CertificateException when the domain has no registry row
+     */
+    protected function resolve(Certificate|string $certificate): Certificate
+    {
+        if ($certificate instanceof Certificate) {
+            return $certificate;
+        }
+
+        return $this->find($certificate) ?? throw CertificateException::notFound($certificate);
+    }
+
     protected function registryAvailable(): bool
     {
         return Schema::connection($this->connection)->hasTable((string) config('certificates.table', 'certificates'));
@@ -219,7 +358,7 @@ class CertificateService
 
     private function resolver(): CachedStatusResolver
     {
-        return $this->statusResolver ??= app(CachedStatusResolver::class);
+        return $this->statusResolver ??= $this->container->make(CachedStatusResolver::class);
     }
 
     private function generateLock(string $owner): Lock
