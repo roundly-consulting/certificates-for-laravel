@@ -17,8 +17,10 @@ use RoundlyConsulting\Certificates\DataTransferObjects\RenewalFailure;
 use RoundlyConsulting\Certificates\DataTransferObjects\RenewalReport;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
+use RoundlyConsulting\Certificates\Exceptions\InvalidDomainException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Providers\ArrayProvider;
+use RoundlyConsulting\Certificates\Rules\ValidDomain;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 use RuntimeException;
@@ -31,9 +33,9 @@ use Throwable;
  * it too. It never touches a provider, the registry, the queue or the event bus:
  * certificates live in memory, every driver is an ArrayProvider, and every mutating call
  * — through the facade, an injected manager, the `for()` handle or the HasCertificates
- * trait — is recorded for the `assert*` methods. Illegal lifecycle transitions and
- * unknown domains still throw, exactly as they do for real; `failRenewalOf()` makes chosen
- * renewals fail the way a rejecting CA would.
+ * trait — is recorded for the `assert*` methods. Invalid domains, illegal lifecycle
+ * transitions (renewLater() included) and unknown domains still throw, exactly as they do
+ * for real; `failRenewalOf()` makes chosen renewals fail the way a rejecting CA would.
  */
 final class CertificatesFake extends CertificatesManager
 {
@@ -131,6 +133,14 @@ final class CertificatesFake extends CertificatesManager
     public function issue(IssueCertificateData $data): Certificate
     {
         $domains = array_values(array_unique(array_map($this->key(...), $data->allDomains())));
+        $rule = new ValidDomain;
+
+        foreach ($domains as $candidate) {
+            if (! $rule->passes($candidate)) {
+                throw InvalidDomainException::forDomain($candidate);
+            }
+        }
+
         $domain = $domains[0];
 
         $this->requested[] = $domain;
@@ -243,7 +253,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function renewLater(Certificate|string $certificate): Certificate
     {
-        $certificate = $this->resolve($certificate);
+        $certificate = $this->transition($certificate, CertificateStatus::Renewing);
 
         $this->renewedLater[] = $certificate->domain;
 

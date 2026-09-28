@@ -223,13 +223,18 @@ class CertificatesManager
     }
 
     /**
-     * Queue a renewal (RenewCertificateJob on `certificates.renewal.queue`).
+     * Queue a renewal (RenewCertificateJob on `certificates.renewal.queue`). The status is
+     * checked now, not in the worker: a certificate that cannot renew is refused here.
      *
-     * @throws CertificateException when the domain has no registry row
+     * @throws CertificateException when the domain has no registry row or its status cannot renew
      */
     public function renewLater(Certificate|string $certificate): Certificate
     {
         $certificate = $this->resolve($certificate);
+
+        if (! $certificate->status->canTransitionTo(CertificateStatus::Renewing)) {
+            throw CertificateException::illegalTransition($certificate->status, CertificateStatus::Renewing);
+        }
 
         RenewCertificateJob::dispatch($certificate->id, $certificate->getConnectionName());
 

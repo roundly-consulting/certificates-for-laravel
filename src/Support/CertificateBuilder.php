@@ -149,7 +149,7 @@ final class CertificateBuilder
     /**
      * Queue a renewal of this domain's registry certificate.
      *
-     * @throws CertificateException when the domain (on the chosen driver) has no registry row
+     * @throws CertificateException when the domain (on the chosen driver) has no registry row or its status cannot renew
      */
     public function renewLater(): Certificate
     {
