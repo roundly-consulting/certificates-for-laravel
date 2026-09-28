@@ -40,6 +40,16 @@ class CertificateException extends Exception
         ]));
     }
 
+    public static function noMaterial(string $name): self
+    {
+        return new self((string) trans('certificates::messages.no_material', ['name' => $name]));
+    }
+
+    public static function notRenewed(string $driver, string $domain): self
+    {
+        return new self((string) trans('certificates::messages.not_renewed', ['driver' => $driver, 'domain' => $domain]));
+    }
+
     public static function noAlertNotifiable(string $domain): self
     {
         return new self(

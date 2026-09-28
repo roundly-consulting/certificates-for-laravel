@@ -18,9 +18,11 @@ use Throwable;
 /**
  * Renew one registry certificate through its own driver.
  *
- * The row moves Issued/Renewed/Failed → Renewing → Renewed. When the provider throws, the
- * row moves to Failed and CertificateFailed fires before the exception is rethrown — it is
- * never left stuck in Renewing, and a Failed row stays renewable (renewDue() retries it).
+ * The row moves Issued/Renewed/Failed → Renewing → Renewed. The provider's own report is
+ * the proof: a status that is not live, or the very same certificate (same fingerprint),
+ * is a failed renewal. When the renewal fails the row moves to Failed and CertificateFailed
+ * fires before the exception is rethrown — it is never left stuck in Renewing, and a Failed
+ * row stays renewable (renewDue() retries it).
  *
  * Reach it through `Certificates::renew()` / `Certificates::for($domain)->renew()`.
  */
@@ -36,6 +38,8 @@ final readonly class RenewCertificateAction
             throw CertificateException::illegalTransition($certificate->status, CertificateStatus::Renewing);
         }
 
+        $previousFingerprint = $certificate->fingerprint;
+
         $certificate->forceFill(['status' => CertificateStatus::Renewing])->save();
 
         try {
@@ -50,9 +54,19 @@ final readonly class RenewCertificateAction
                 $provider->generate($certificate->name, $certificate->domain);
             }
 
-            $expiresAt = $provider instanceof ReportsCertificateStatus
-                ? $provider->status($certificate->name, $certificate->domain)->expiresAt
+            $report = $provider instanceof ReportsCertificateStatus
+                ? $provider->status($certificate->name, $certificate->domain)
                 : null;
+
+            if ($report !== null && ! $report->status->isActive()) {
+                throw CertificateException::providerReported($certificate->driver, $certificate->domain, $report->status);
+            }
+
+            // Same fingerprint = the same certificate: nothing was renewed, whatever the
+            // provider call returned (e.g. imported material nobody replaced).
+            if ($report?->fingerprint !== null && $report->fingerprint === $previousFingerprint) {
+                throw CertificateException::notRenewed($certificate->driver, $certificate->domain);
+            }
         } catch (Throwable $e) {
             $certificate->markFailed($e->getMessage());
             Event::dispatch(new CertificateFailed($certificate, $e->getMessage()));
@@ -60,7 +74,13 @@ final readonly class RenewCertificateAction
             throw $e;
         }
 
-        $certificate->markRenewed($expiresAt ?? now()->addDays(90));
+        $certificate->forceFill([
+            'issuer' => $report->issuer ?? $certificate->issuer,
+            'serial' => $report->serial ?? $certificate->serial,
+            'fingerprint' => $report->fingerprint ?? $certificate->fingerprint,
+        ]);
+
+        $certificate->markRenewed($report->expiresAt ?? now()->addDays(90));
 
         Event::dispatch(new CertificateRenewed($certificate));
 

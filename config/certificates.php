@@ -246,7 +246,9 @@ return [
             'verify' => env('CERTIFICATES_ACME_VERIFY', true),
         ],
 
-        // Stores/reads PEM material on a Storage disk; can self-sign for dev.
+        // Stores/reads PEM material on a Storage disk; can self-sign for dev. Not a
+        // CA: without self_signed, issuing a name with no stored PEM throws. With it,
+        // every issue/renew mints fresh material (never over a CA-issued PEM).
         'filesystem' => [
             'disk' => env('CERTIFICATES_FS_DISK', 'local'),
             'path' => env('CERTIFICATES_FS_PATH', 'certificates'),

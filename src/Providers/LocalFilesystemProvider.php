@@ -13,6 +13,7 @@ use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\StoredCertificate;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
@@ -21,6 +22,10 @@ use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
  * it reads/parses material produced elsewhere (e.g. an external ACME run) and,
  * when self_signed is enabled, can generate self-signed certificates for local
  * development and as a realistic test backend.
+ *
+ * Without self-signing, provisioning a name with no stored material throws
+ * rather than pretending; with it, every provisioning call mints fresh material
+ * (never over material a real CA issued).
  */
 final class LocalFilesystemProvider implements CertificateProvider, ProvisionsMultipleDomains, ReportsCertificateStatus
 {
@@ -62,18 +67,36 @@ final class LocalFilesystemProvider implements CertificateProvider, ProvisionsMu
      */
     public function generateMany(string $name, array $domains): void
     {
-        if ($this->store->exists($name)) {
-            return;
-        }
+        $existing = $this->store->get($name);
 
         if ($this->csr === null) {
-            // Not a CA and no self-signing configured: nothing to import.
+            // Not a CA: imported material is registered as-is, and there is nothing to
+            // provision without it — reporting success here would record a certificate
+            // that does not exist.
+            if ($existing === null) {
+                throw CertificateException::noMaterial($name);
+            }
+
             return;
         }
 
+        // Material a real CA issued is never overwritten with a self-signed one.
+        if ($existing !== null && ! $this->selfSigned($existing)) {
+            return;
+        }
+
+        // Self-signing mints fresh material every time, so a renewal is a real renewal
+        // (a new certificate and a later expiry), never the old material relabelled.
         [$cert, $key] = $this->csr->selfSigned($domains, $this->selfSignedDays);
 
         $this->store->put($name, new StoredCertificate(certificatePem: $cert, privateKeyPem: $key));
+    }
+
+    private function selfSigned(StoredCertificate $material): bool
+    {
+        $parsed = $this->parser->parse($material->certificatePem);
+
+        return $parsed->issuer === $parsed->commonName;
     }
 
     public function status(string $name, string $domain): CertificateStatusReport

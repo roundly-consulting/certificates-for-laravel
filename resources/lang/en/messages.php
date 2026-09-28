@@ -8,6 +8,8 @@ return [
     'illegal_transition' => 'Cannot transition a certificate from ":from" to ":to".',
     'not_found' => 'No certificate is registered for ":domain".',
     'provisioning_in_progress' => 'The certificate for ":domain" is already being provisioned; try again once that finishes.',
+    'no_material' => 'The filesystem driver is not a CA and no certificate material is stored for ":name". Place the PEM on the disk yourself, or enable drivers.filesystem.self_signed for local development.',
+    'not_renewed' => 'The :driver provider did not produce a new certificate for ":domain".',
     'provider_reported' => 'The :driver provider reports the certificate for ":domain" as :status.',
 
     'commands' => [
