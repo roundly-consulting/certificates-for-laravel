@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Macroable;
 use RoundlyConsulting\Alerts\HealthManager;
 use RoundlyConsulting\Alerts\Support\PendingScheduledCheck;
@@ -35,6 +34,7 @@ use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateBuilder;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\Support\CertificateName;
 use RoundlyConsulting\Certificates\Support\ProvisioningLock;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
@@ -332,13 +332,12 @@ class CertificatesManager
     }
 
     /**
-     * Build the deterministic, DNS-safe secret name for a domain.
+     * Build the deterministic secret name for a domain: lowercase, DNS-1123 safe
+     * (a wildcard `*.` becomes `wildcard-`) and at most 253 characters.
      */
     public function certificateName(string $domain): string
     {
-        $prefix = (string) config('certificates.name_prefix', 'generated-tls-');
-
-        return $prefix.Str::of($domain)->kebab()->replace(['.', ':'], '-')->value();
+        return CertificateName::for($domain);
     }
 
     /**

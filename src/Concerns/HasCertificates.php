@@ -40,12 +40,12 @@ trait HasCertificates
 
     public function certificateFor(string $domain): ?Certificate
     {
-        return $this->certificates()->where('domain', $domain)->latest('id')->first();
+        return $this->certificates()->forDomain($domain)->latest('id')->first();
     }
 
     public function hasCertificateFor(string $domain): bool
     {
-        return $this->certificates()->where('domain', $domain)->exists();
+        return $this->certificates()->forDomain($domain)->exists();
     }
 
     /**

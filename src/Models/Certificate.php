@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use RoundlyConsulting\Certificates\Database\Factories\CertificateFactory;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Events\CertificateExpired;
@@ -228,7 +229,7 @@ class Certificate extends Model
      */
     public function scopeForDomain(Builder $query, string $domain): void
     {
-        $query->where('domain', $domain);
+        $query->where('domain', Str::lower(trim($domain)));
     }
 
     /**
@@ -247,6 +248,8 @@ class Certificate extends Model
      */
     public function scopeCoveringDomain(Builder $query, string $domain): void
     {
+        $domain = Str::lower(trim($domain));
+
         $query->where(function (Builder $query) use ($domain): void {
             $query->where('domain', $domain)
                 ->orWhereJsonContains('domains', $domain);

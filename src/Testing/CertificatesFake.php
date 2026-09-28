@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Certificates\Testing;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Assert;
 use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
@@ -85,7 +86,7 @@ final class CertificatesFake extends CertificatesManager
     public function seed(Certificate ...$certificates): static
     {
         foreach ($certificates as $certificate) {
-            $this->store[$certificate->domain] = $certificate;
+            $this->store[$this->key($certificate->domain)] = $certificate;
         }
 
         return $this;
@@ -97,7 +98,7 @@ final class CertificatesFake extends CertificatesManager
      */
     public function failRenewalOf(string ...$domains): static
     {
-        $this->failingRenewals = [...$this->failingRenewals, ...array_values($domains)];
+        $this->failingRenewals = [...$this->failingRenewals, ...array_map($this->key(...), array_values($domains))];
 
         return $this;
     }
@@ -117,7 +118,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function exists(string $domain): bool
     {
-        return isset($this->store[$domain]);
+        return isset($this->store[$this->key($domain)]);
     }
 
     public function generate(string $domain): bool
@@ -129,14 +130,17 @@ final class CertificatesFake extends CertificatesManager
 
     public function issue(IssueCertificateData $data): Certificate
     {
-        $this->requested[] = $data->domain;
+        $domains = array_values(array_unique(array_map($this->key(...), $data->allDomains())));
+        $domain = $domains[0];
+
+        $this->requested[] = $domain;
 
         $model = CertificateModel::class();
         $certificate = new $model;
         $certificate->forceFill([
-            'name' => $this->certificateName($data->domain),
-            'domain' => $data->domain,
-            'domains' => count($data->allDomains()) > 1 ? $data->allDomains() : null,
+            'name' => $this->certificateName($domain),
+            'domain' => $domain,
+            'domains' => count($domains) > 1 ? $domains : null,
             'driver' => $data->driver ?? 'array',
             'status' => CertificateStatus::Issued,
             'issuer' => $data->issuer,
@@ -148,15 +152,15 @@ final class CertificatesFake extends CertificatesManager
             $certificate->certifiable()->associate($data->owner);
         }
 
-        $this->store[$data->domain] = $certificate;
-        $this->issued[] = $data->domain;
+        $this->store[$domain] = $certificate;
+        $this->issued[] = $domain;
 
         return $certificate;
     }
 
     public function issueIfMissing(string $domain): Certificate
     {
-        $existing = $this->store[$domain] ?? null;
+        $existing = $this->store[$this->key($domain)] ?? null;
 
         if ($existing !== null && $existing->isActive()) {
             return $existing;
@@ -167,7 +171,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function find(string $domain, ?string $driver = null): ?Certificate
     {
-        $certificate = $this->store[$domain] ?? null;
+        $certificate = $this->store[$this->key($domain)] ?? null;
 
         if ($certificate === null || ($driver !== null && $certificate->driver !== $driver)) {
             return null;
@@ -324,18 +328,18 @@ final class CertificatesFake extends CertificatesManager
      */
     public function recordFailure(string $domain): void
     {
-        $this->requested[] = $domain;
-        $this->failed[] = $domain;
+        $this->requested[] = $this->key($domain);
+        $this->failed[] = $this->key($domain);
     }
 
     public function assertIssued(string $domain): void
     {
-        Assert::assertContains($domain, $this->issued, "Expected a certificate to be issued for [{$domain}].");
+        Assert::assertContains($this->key($domain), $this->issued, "Expected a certificate to be issued for [{$domain}].");
     }
 
     public function assertNotIssued(string $domain): void
     {
-        Assert::assertNotContains($domain, $this->issued, "Expected no certificate to be issued for [{$domain}].");
+        Assert::assertNotContains($this->key($domain), $this->issued, "Expected no certificate to be issued for [{$domain}].");
     }
 
     public function assertIssuedCount(int $count): void
@@ -350,22 +354,22 @@ final class CertificatesFake extends CertificatesManager
 
     public function assertRequested(string $domain): void
     {
-        Assert::assertContains($domain, $this->requested, "Expected a certificate to be requested for [{$domain}].");
+        Assert::assertContains($this->key($domain), $this->requested, "Expected a certificate to be requested for [{$domain}].");
     }
 
     public function assertFailed(string $domain): void
     {
-        Assert::assertContains($domain, $this->failed, "Expected a certificate to fail for [{$domain}].");
+        Assert::assertContains($this->key($domain), $this->failed, "Expected a certificate to fail for [{$domain}].");
     }
 
     public function assertRenewed(string $domain): void
     {
-        Assert::assertContains($domain, $this->renewed, "Expected the certificate for [{$domain}] to be renewed.");
+        Assert::assertContains($this->key($domain), $this->renewed, "Expected the certificate for [{$domain}] to be renewed.");
     }
 
     public function assertNotRenewed(string $domain): void
     {
-        Assert::assertNotContains($domain, $this->renewed, "Expected the certificate for [{$domain}] not to be renewed.");
+        Assert::assertNotContains($this->key($domain), $this->renewed, "Expected the certificate for [{$domain}] not to be renewed.");
     }
 
     public function assertNothingRenewed(): void
@@ -375,7 +379,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function assertRenewedLater(string $domain): void
     {
-        Assert::assertContains($domain, $this->renewedLater, "Expected a renewal to be queued for [{$domain}].");
+        Assert::assertContains($this->key($domain), $this->renewedLater, "Expected a renewal to be queued for [{$domain}].");
     }
 
     public function assertNothingRenewedLater(): void
@@ -403,7 +407,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function assertRenewalFailed(string $domain): void
     {
-        Assert::assertContains($domain, $this->renewalFailures, "Expected the renewal of [{$domain}] to fail.");
+        Assert::assertContains($this->key($domain), $this->renewalFailures, "Expected the renewal of [{$domain}] to fail.");
     }
 
     public function assertNoRenewalFailures(): void
@@ -418,7 +422,7 @@ final class CertificatesFake extends CertificatesManager
     {
         $matching = array_filter(
             $this->revoked,
-            static fn (array $revocation): bool => $revocation[0] === $domain && ($reason === null || $revocation[1] === $reason),
+            fn (array $revocation): bool => $revocation[0] === $this->key($domain) && ($reason === null || $revocation[1] === $reason),
         );
 
         Assert::assertNotSame([], $matching, $reason === null
@@ -428,7 +432,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function assertNotRevoked(string $domain): void
     {
-        Assert::assertNotContains($domain, array_column($this->revoked, 0), "Expected the certificate for [{$domain}] not to be revoked.");
+        Assert::assertNotContains($this->key($domain), array_column($this->revoked, 0), "Expected the certificate for [{$domain}] not to be revoked.");
     }
 
     public function assertNothingRevoked(): void
@@ -438,7 +442,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function assertExpired(string $domain): void
     {
-        Assert::assertContains($domain, $this->expired, "Expected the certificate for [{$domain}] to be marked expired.");
+        Assert::assertContains($this->key($domain), $this->expired, "Expected the certificate for [{$domain}] to be marked expired.");
     }
 
     public function assertNothingExpired(): void
@@ -476,6 +480,15 @@ final class CertificatesFake extends CertificatesManager
     public function assertNothingPruned(): void
     {
         Assert::assertSame([], $this->pruned, 'Expected no certificate prune.');
+    }
+
+    /**
+     * Hostnames are case-insensitive — the fake keys and records them lowercased, as the
+     * real registry does.
+     */
+    private function key(string $domain): string
+    {
+        return Str::lower(trim($domain));
     }
 
     private function transition(Certificate|string $certificate, CertificateStatus $to): Certificate

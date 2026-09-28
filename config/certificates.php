@@ -80,8 +80,10 @@ return [
     | Certificate name prefix
     |--------------------------------------------------------------------------
     |
-    | Prefix used when deriving the deterministic, DNS-safe secret name for a
-    | domain (e.g. "example.com" => "generated-tls-example-com").
+    | Prefix used when deriving the deterministic secret name for a domain
+    | (e.g. "example.com" => "generated-tls-example-com"). The whole name is
+    | lowercased and folded into a DNS-1123 subdomain (max 253 characters):
+    | "*.example.com" => "generated-tls-wildcard-example-com".
     |
     */
     'name_prefix' => env('CERTIFICATES_NAME_PREFIX', 'generated-tls-'),

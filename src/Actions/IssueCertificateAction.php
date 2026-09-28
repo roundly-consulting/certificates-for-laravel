@@ -21,6 +21,7 @@ use RoundlyConsulting\Certificates\Exceptions\ProvisioningInProgressException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Rules\ValidDomain;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\Support\CertificateName;
 use RoundlyConsulting\Certificates\Support\ProvisioningLock;
 use Throwable;
 
@@ -39,17 +40,34 @@ final readonly class IssueCertificateAction
 
     public function execute(IssueCertificateData $data, ?string $connection = null): Certificate
     {
+        // Hostnames are case-insensitive: one host is one certificate, one row, one name.
+        $domains = array_values(array_unique(array_map(
+            static fn (string $domain): string => Str::lower(trim($domain)),
+            $data->allDomains(),
+        )));
+
         $rule = new ValidDomain;
 
-        foreach ($data->allDomains() as $candidate) {
+        foreach ($domains as $candidate) {
             if (! $rule->passes($candidate)) {
                 throw InvalidDomainException::forDomain($candidate);
             }
         }
 
+        $data = new IssueCertificateData(
+            domain: $domains[0],
+            issuer: $data->issuer,
+            namespace: $data->namespace,
+            driver: $data->driver,
+            validForDays: $data->validForDays,
+            meta: $data->meta,
+            owner: $data->owner,
+            domains: count($domains) > 1 ? $domains : [],
+        );
+
         $driver = $data->driver ?? $this->manager->getDefaultDriver();
         $provider = $this->manager->provider($driver);
-        $name = $this->certificateName($data->domain);
+        $name = CertificateName::for($data->domain);
 
         // Taken before the row is touched: a concurrent issuance of the same certificate
         // must neither reset the row it is about to record nor be told it succeeded.
@@ -162,12 +180,5 @@ final readonly class IssueCertificateAction
     private function inProgress(CertificateStatus $status): bool
     {
         return in_array($status, [CertificateStatus::Pending, CertificateStatus::Requested, CertificateStatus::Renewing], true);
-    }
-
-    private function certificateName(string $domain): string
-    {
-        $prefix = (string) config('certificates.name_prefix', 'generated-tls-');
-
-        return $prefix.Str::of($domain)->kebab()->replace(['.', ':'], '-')->value();
     }
 }

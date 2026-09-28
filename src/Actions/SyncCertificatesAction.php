@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Actions;
 
+use Illuminate\Support\Str;
 use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
@@ -51,7 +52,7 @@ final readonly class SyncCertificatesAction
                 $model->setConnection($connection);
             }
 
-            $model->forceFill(['domain' => $remote->domain]);
+            $model->forceFill(['domain' => Str::lower($remote->domain)]);
 
             if ($provider instanceof ReportsCertificateStatus) {
                 $report = $provider->status($remote->name, $remote->domain);
