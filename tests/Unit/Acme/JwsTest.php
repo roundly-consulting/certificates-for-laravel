@@ -103,10 +103,11 @@ it('produces a raw 64-byte r||s signature for ES256, not DER', function (): void
 
     $signature = Base64Url::decode($jws->signature);
 
-    // DER would start with a 0x30 SEQUENCE tag and vary in length; ACME requires
-    // the fixed-width JOSE form. Let's Encrypt rejects anything else.
+    // DER would be a 0x30 SEQUENCE whose length byte covers the rest; ACME requires
+    // the fixed-width JOSE form. Let's Encrypt rejects anything else. (A raw r||s
+    // starts with 0x30 one run in 256, so the tag alone is not the test.)
     expect(strlen($signature))->toBe(64)
-        ->and(bin2hex($signature[0]))->not->toBe('30')
+        ->and(ord($signature[0]) === 0x30 && ord($signature[1]) === strlen($signature) - 2)->toBeFalse()
         ->and((new Es(EcKey::public($key->publicPem())))->verify($jws->protected.'.'.$jws->payload, $signature))->toBeTrue();
 });
 
