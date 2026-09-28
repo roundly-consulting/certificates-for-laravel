@@ -42,9 +42,15 @@ it('maps a Ready=True certificate to Issued with expiry', function () use ($cert
         ->and($report->expiresAt)->toEqual(CarbonImmutable::parse('2030-01-01T00:00:00Z'));
 });
 
-it('maps a Ready=False certificate to Failed', function () use ($certUrl): void {
+it('maps a failed issuance to Failed', function () use ($certUrl): void {
     Http::fake([$certUrl => Http::response([
-        'status' => ['conditions' => [['type' => 'Ready', 'status' => 'False', 'reason' => 'Failed']]],
+        'status' => [
+            'lastFailureTime' => '2026-09-28T10:00:00Z',
+            'conditions' => [
+                ['type' => 'Ready', 'status' => 'False', 'reason' => 'DoesNotExist'],
+                ['type' => 'Issuing', 'status' => 'False', 'reason' => 'Failed', 'message' => 'The certificate request has failed to complete'],
+            ],
+        ],
     ], 200)]);
 
     expect(statusProvider()->status('generated-tls-a-com', 'a.com')->status)
@@ -65,3 +71,36 @@ it('throws when reading status fails', function () use ($certUrl): void {
 
     statusProvider()->status('generated-tls-a-com', 'a.com');
 })->throws(KubernetesApiException::class);
+
+it('maps a Certificate cert-manager has not created yet to Pending', function () use ($certUrl): void {
+    Http::fake([$certUrl => Http::response(['kind' => 'Status', 'code' => 404], 404)]);
+
+    $report = statusProvider()->status('generated-tls-a-com', 'a.com');
+
+    expect($report->status)->toBe(CertificateStatus::Pending)
+        ->and($report->expiresAt)->toBeNull();
+});
+
+it('maps Ready=False while cert-manager is issuing to Pending', function () use ($certUrl): void {
+    Http::fake([$certUrl => Http::response([
+        'status' => ['conditions' => [
+            ['type' => 'Ready', 'status' => 'False', 'reason' => 'DoesNotExist'],
+            ['type' => 'Issuing', 'status' => 'True', 'reason' => 'DoesNotExist'],
+        ]],
+    ], 200)]);
+
+    expect(statusProvider()->status('generated-tls-a-com', 'a.com')->status)
+        ->toBe(CertificateStatus::Pending);
+});
+
+it('maps a Ready=True certificate past its notAfter to Expired', function () use ($certUrl): void {
+    Http::fake([$certUrl => Http::response([
+        'status' => [
+            'notAfter' => '2001-01-01T00:00:00Z',
+            'conditions' => [['type' => 'Ready', 'status' => 'True']],
+        ],
+    ], 200)]);
+
+    expect(statusProvider()->status('generated-tls-a-com', 'a.com')->status)
+        ->toBe(CertificateStatus::Expired);
+});

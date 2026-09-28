@@ -27,6 +27,19 @@ class CertificateException extends Exception
         ]));
     }
 
+    /**
+     * The provider finished provisioning but reports the certificate as not usable
+     * (failed, expired or revoked) — the issuance or renewal did not produce a live one.
+     */
+    public static function providerReported(string $driver, string $domain, CertificateStatus $status): self
+    {
+        return new self((string) trans('certificates::messages.provider_reported', [
+            'driver' => $driver,
+            'domain' => $domain,
+            'status' => $status->value,
+        ]));
+    }
+
     public static function noAlertNotifiable(string $domain): self
     {
         return new self(

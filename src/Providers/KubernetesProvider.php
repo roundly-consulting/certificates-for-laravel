@@ -74,6 +74,12 @@ final class KubernetesProvider implements CertificateProvider, ProvisionsMultipl
     {
         $response = $this->request()->get($this->certificatesPath().'/'.$name);
 
+        // ingress-shim creates the Certificate moments after the Ingress is patched, so on a
+        // first issuance it is routinely absent: not issued yet, rather than an error.
+        if ($response->status() === 404) {
+            return new CertificateStatusReport(status: CertificateStatus::Pending);
+        }
+
         if ($response->failed()) {
             throw KubernetesApiException::fromResponse('reading certificate status', $response);
         }
@@ -81,31 +87,16 @@ final class KubernetesProvider implements CertificateProvider, ProvisionsMultipl
         /** @var array<string, mixed> $body */
         $body = $response->json();
 
-        /** @var list<array<string, mixed>> $conditions */
-        $conditions = $body['status']['conditions'] ?? [];
-
-        $ready = null;
-
-        foreach ($conditions as $condition) {
-            if (($condition['type'] ?? null) === 'Ready') {
-                $ready = $condition;
-
-                break;
-            }
-        }
-
-        $status = match (true) {
-            ($ready['status'] ?? null) === 'True' => CertificateStatus::Issued,
-            $ready !== null => CertificateStatus::Failed,
-            default => CertificateStatus::Pending,
-        };
+        /** @var array<string, mixed> $state */
+        $state = is_array($body['status'] ?? null) ? $body['status'] : [];
 
         /** @var string|null $notAfter */
-        $notAfter = $body['status']['notAfter'] ?? null;
+        $notAfter = $state['notAfter'] ?? null;
+        $expiresAt = $notAfter !== null ? CarbonImmutable::parse($notAfter) : null;
 
         return new CertificateStatusReport(
-            status: $status,
-            expiresAt: $notAfter !== null ? CarbonImmutable::parse($notAfter) : null,
+            status: $this->statusFrom($state, $expiresAt),
+            expiresAt: $expiresAt,
             issuer: isset($body['spec']['issuerRef']['name']) ? (string) $body['spec']['issuerRef']['name'] : null,
         );
     }
@@ -162,6 +153,47 @@ final class KubernetesProvider implements CertificateProvider, ProvisionsMultipl
         $schema['spec']['rules'] = $rules;
 
         $this->applyIngress($name, $schema, $ingress !== null);
+    }
+
+    /**
+     * Map cert-manager's conditions onto the registry lifecycle. `Ready=False` alone is not
+     * a failure — it is also what cert-manager reports while it is still issuing — so only
+     * a failed issuance attempt (`Issuing=False` with reason `Failed`, or a recorded
+     * `lastFailureTime`) is Failed; anything else not yet Ready is Pending.
+     *
+     * @param  array<string, mixed>  $state
+     */
+    private function statusFrom(array $state, ?CarbonImmutable $expiresAt): CertificateStatus
+    {
+        /** @var list<array<string, mixed>> $conditions */
+        $conditions = is_array($state['conditions'] ?? null) ? $state['conditions'] : [];
+
+        $ready = $this->condition($conditions, 'Ready');
+        $issuing = $this->condition($conditions, 'Issuing');
+        $lapsed = $expiresAt !== null && $expiresAt->isPast();
+
+        return match (true) {
+            ($ready['status'] ?? null) === 'True' => $lapsed ? CertificateStatus::Expired : CertificateStatus::Issued,
+            ($issuing['status'] ?? null) === 'True' => CertificateStatus::Pending,
+            ($issuing['reason'] ?? null) === 'Failed', isset($state['lastFailureTime']) => CertificateStatus::Failed,
+            $lapsed => CertificateStatus::Expired,
+            default => CertificateStatus::Pending,
+        };
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $conditions
+     * @return array<string, mixed>|null
+     */
+    private function condition(array $conditions, string $type): ?array
+    {
+        foreach ($conditions as $condition) {
+            if (($condition['type'] ?? null) === $type) {
+                return $condition;
+            }
+        }
+
+        return null;
     }
 
     /**

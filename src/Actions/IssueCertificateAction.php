@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Actions;
 
-use Carbon\CarbonInterface;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -17,6 +16,7 @@ use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Events\CertificateFailed;
 use RoundlyConsulting\Certificates\Events\CertificateIssued;
 use RoundlyConsulting\Certificates\Events\CertificateRequested;
+use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Exceptions\InvalidDomainException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Rules\ValidDomain;
@@ -65,6 +65,14 @@ final readonly class IssueCertificateAction
             } else {
                 $provider->generate($name, $data->domain);
             }
+
+            // The status read is part of issuance: a backend that cannot report is a failed
+            // issuance too, never a row stranded in Requested with no event.
+            $report = $provider instanceof ReportsCertificateStatus ? $provider->status($name, $data->domain) : null;
+
+            if ($report !== null && ! $report->status->isActive() && ! $this->inProgress($report->status)) {
+                throw CertificateException::providerReported($driver, $data->domain, $report->status);
+            }
         } catch (Throwable $e) {
             $certificate->markFailed($e->getMessage());
             Event::dispatch(new CertificateFailed($certificate, $e->getMessage()));
@@ -74,9 +82,19 @@ final readonly class IssueCertificateAction
             $lock->release();
         }
 
-        $expiresAt = $this->resolveExpiry($provider, $name, $data);
+        if ($report !== null && ! $report->status->isActive()) {
+            // Still being issued (cert-manager issues asynchronously): the row stays
+            // Requested until certificates:sync records the outcome.
+            return $certificate;
+        }
 
-        $certificate->markIssued($expiresAt ?? now()->addDays($data->validForDays ?? 90));
+        $certificate->forceFill([
+            'issuer' => $report->issuer ?? $certificate->issuer,
+            'serial' => $report?->serial,
+            'fingerprint' => $report?->fingerprint,
+        ]);
+
+        $certificate->markIssued($report->expiresAt ?? now()->addDays($data->validForDays ?? 90));
 
         Event::dispatch(new CertificateIssued($certificate));
 
@@ -113,13 +131,9 @@ final readonly class IssueCertificateAction
         return $model;
     }
 
-    private function resolveExpiry(object $provider, string $name, IssueCertificateData $data): ?CarbonInterface
+    private function inProgress(CertificateStatus $status): bool
     {
-        if (! $provider instanceof ReportsCertificateStatus) {
-            return null;
-        }
-
-        return $provider->status($name, $data->domain)->expiresAt;
+        return in_array($status, [CertificateStatus::Pending, CertificateStatus::Requested, CertificateStatus::Renewing], true);
     }
 
     private function certificateName(string $domain): string

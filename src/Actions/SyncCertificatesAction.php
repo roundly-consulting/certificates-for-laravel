@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Certificates\Actions;
 use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 /**
@@ -47,9 +48,11 @@ final readonly class SyncCertificatesAction
             if ($provider instanceof ReportsCertificateStatus) {
                 $report = $provider->status($remote->name, $remote->domain);
                 $model->forceFill([
-                    'status' => $report->status,
+                    'status' => $this->statusFor($model, $report->status),
                     'expires_at' => $report->expiresAt,
                     'issuer' => $report->issuer ?? $model->issuer,
+                    'serial' => $report->serial ?? $model->serial,
+                    'fingerprint' => $report->fingerprint ?? $model->fingerprint,
                 ]);
             } elseif (! $model->exists) {
                 $model->forceFill(['status' => CertificateStatus::Issued]);
@@ -60,5 +63,17 @@ final readonly class SyncCertificatesAction
         }
 
         return $count;
+    }
+
+    /**
+     * A provider reporting Pending is still issuing; a row already Requested or Renewing
+     * says the same thing more precisely, so it keeps its status until there is an outcome.
+     */
+    private function statusFor(Certificate $model, CertificateStatus $reported): CertificateStatus
+    {
+        $inFlight = $model->exists
+            && in_array($model->status, [CertificateStatus::Requested, CertificateStatus::Renewing], true);
+
+        return $reported === CertificateStatus::Pending && $inFlight ? $model->status : $reported;
     }
 }
