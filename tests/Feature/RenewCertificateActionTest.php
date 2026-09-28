@@ -11,7 +11,9 @@ use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Events\CertificateFailed;
 use RoundlyConsulting\Certificates\Events\CertificateRenewed;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
+use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Providers\ArrayProvider;
 
 beforeEach(function (): void {
     config()->set('certificates.default', 'array');
@@ -100,4 +102,26 @@ it('marks the certificate failed and fires the failed event when the provider th
 
     Event::assertDispatched(CertificateFailed::class, fn (CertificateFailed $e): bool => $e->reason === 'ACME order rejected');
     Event::assertNotDispatched(CertificateRenewed::class);
+});
+
+/**
+ * Regression: renewal called generate($name, $domain) even for a SAN certificate, so on
+ * acme or kubernetes the renewed certificate covered only the primary domain while the
+ * registry still listed every SAN — the other hosts broke at renewal.
+ */
+it('renews every SAN domain of a multi-domain certificate', function (): void {
+    $certificate = Certificates::for('san.example.com')->alsoFor('www.san.example.com')->issue();
+
+    /** @var ArrayProvider $provider */
+    $provider = Certificates::driver('array');
+
+    Certificates::renew($certificate);
+
+    expect($provider->generatedCalls())->toBe([])
+        ->and($provider->generatedManyCalls())->toHaveCount(2)
+        ->and($provider->generatedManyCalls()[1])->toBe([
+            'name' => 'generated-tls-san-example-com',
+            'domains' => ['san.example.com', 'www.san.example.com'],
+        ])
+        ->and($certificate->fresh()?->status)->toBe(CertificateStatus::Renewed);
 });

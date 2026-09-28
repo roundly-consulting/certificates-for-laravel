@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Certificates\Actions;
 
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Certificates\CertificateProviderManager;
+use RoundlyConsulting\Certificates\Contracts\ProvisionsMultipleDomains;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Events\CertificateFailed;
@@ -39,7 +40,15 @@ final readonly class RenewCertificateAction
 
         try {
             $provider = $this->manager->provider($certificate->driver);
-            $provider->generate($certificate->name, $certificate->domain);
+            $domains = $certificate->domains ?? [$certificate->domain];
+
+            // A SAN certificate is re-provisioned for every domain it covers — renewing only
+            // the primary would silently drop the other hosts from the live certificate.
+            if ($provider instanceof ProvisionsMultipleDomains && count($domains) > 1) {
+                $provider->generateMany($certificate->name, $domains);
+            } else {
+                $provider->generate($certificate->name, $certificate->domain);
+            }
 
             $expiresAt = $provider instanceof ReportsCertificateStatus
                 ? $provider->status($certificate->name, $certificate->domain)->expiresAt
