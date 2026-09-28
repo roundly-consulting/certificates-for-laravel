@@ -17,6 +17,7 @@ return [
         'renewing' => 'Renewing certificate for :domain...',
         'renewed' => 'Renewed certificate for :domain.',
         'queued' => 'Queued renewal for :domain.',
+        'renew_failed' => 'Failed to renew certificate for :domain: :reason',
         'pruned' => 'Pruned :count certificate(s).',
         'synced' => 'Synced :count certificate(s) from the :driver provider.',
         'none_expiring' => 'No certificates are expiring within the threshold.',

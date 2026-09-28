@@ -84,7 +84,9 @@ it('renews every due certificate inline and announces each', function (): void {
 
     $due = Certificates::renewDue(7);
 
-    expect($due->pluck('domain')->all())->toBe(['due.com'])
+    expect($due->renewedDomains())->toBe(['due.com'])
+        ->and($due->queued)->toBe([])
+        ->and($due->failed)->toBe([])
         ->and(Certificates::status('due.com'))->toBe(CertificateStatus::Renewed)
         ->and(Certificates::status('fine.com'))->toBe(CertificateStatus::Issued);
 
@@ -98,7 +100,10 @@ it('queues every due renewal with queue: true', function (): void {
     Certificate::factory()->expiring(3)->forDomain('q1.com')->create(['driver' => 'array']);
     Certificate::factory()->expiring(4)->forDomain('q2.com')->create(['driver' => 'array']);
 
-    expect(Certificates::renewDue(7, queue: true))->toHaveCount(2)
+    $report = Certificates::renewDue(7, queue: true);
+
+    expect($report->queuedDomains())->toBe(['q1.com', 'q2.com'])
+        ->and($report->renewed)->toBe([])
         ->and(Certificates::status('q1.com'))->toBe(CertificateStatus::Issued);
 
     Queue::assertPushed(RenewCertificateJob::class, 2);

@@ -143,7 +143,8 @@ it('records renewals made flat, through the handle and via renewDue', function (
     $due = Certificates::renewDue(4);
 
     expect($renewed->status)->toBe(CertificateStatus::Renewed)
-        ->and($due->pluck('domain')->all())->toBe(['due.example.com']);
+        ->and($due->renewedDomains())->toBe(['due.example.com'])
+        ->and($due->hasFailures())->toBeFalse();
 
     $fake->assertRenewed('flat.example.com');
     $fake->assertRenewed('handle.example.com');
@@ -294,4 +295,55 @@ it('re-issues through issueIfMissing when the stored certificate is inactive', f
     expect(Certificates::issueIfMissing('retry.example.com')->status)->toBe(CertificateStatus::Issued);
 
     $fake->assertIssued('retry.example.com');
+});
+
+it('reports simulated renewal failures and carries on with the rest', function (): void {
+    $fake = Certificates::fake();
+
+    $fake->assertNoRenewalFailures();
+
+    Certificates::issue(new IssueCertificateData(domain: 'a.example.com', validForDays: 1));
+    Certificates::issue(new IssueCertificateData(domain: 'b.example.com', validForDays: 2));
+    Certificates::issue(new IssueCertificateData(domain: 'c.example.com', validForDays: 3));
+
+    $report = Certificates::failRenewalOf('b.example.com')->renewDue(7);
+
+    expect($report->renewedDomains())->toBe(['a.example.com', 'c.example.com'])
+        ->and($report->failedDomains())->toBe(['b.example.com'])
+        ->and($report->failed[0]->reason())->toContain('failRenewalOf')
+        ->and(Certificates::status('b.example.com'))->toBe(CertificateStatus::Failed);
+
+    $fake->assertRenewalFailed('b.example.com');
+    $fake->assertRenewed('a.example.com');
+    $fake->assertRenewed('c.example.com');
+    $fake->assertNotRenewed('b.example.com');
+    $fake->assertRenewedDue(7);
+
+    expect(fn () => $fake->assertRenewalFailed('a.example.com'))->toThrow(ExpectationFailedException::class)
+        ->and(fn () => $fake->assertNoRenewalFailures())->toThrow(ExpectationFailedException::class);
+});
+
+it('fails a single simulated renewal loudly', function (): void {
+    $fake = Certificates::fake()->failRenewalOf('down.example.com');
+
+    Certificates::issue(IssueCertificateData::make('down.example.com'));
+
+    expect(fn () => Certificates::for('down.example.com')->renew())->toThrow(RuntimeException::class);
+
+    $fake->assertRenewalFailed('down.example.com');
+    $fake->assertNothingRenewed();
+});
+
+it('queues simulated failures under queue: true, since the job would fail later', function (): void {
+    $fake = Certificates::fake()->failRenewalOf('q.example.com');
+
+    Certificates::issue(new IssueCertificateData(domain: 'q.example.com', validForDays: 2));
+
+    $report = Certificates::renewDue(7, queue: true);
+
+    expect($report->queuedDomains())->toBe(['q.example.com'])
+        ->and($report->hasFailures())->toBeFalse();
+
+    $fake->assertRenewedLater('q.example.com');
+    $fake->assertNoRenewalFailures();
 });

@@ -28,6 +28,7 @@ use RoundlyConsulting\Certificates\Alerts\ExpiryNotifiableResolver;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
+use RoundlyConsulting\Certificates\DataTransferObjects\RenewalReport;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Jobs\RenewCertificateJob;
@@ -233,11 +234,10 @@ class CertificatesManager
 
     /**
      * Renew — inline, or queued with `$queue` — every certificate expiring within the
-     * threshold, dispatching CertificateExpiring for each.
-     *
-     * @return EloquentCollection<int, Certificate> the certificates that were due
+     * threshold, dispatching CertificateExpiring for each. Each is attempted on its own:
+     * a failure is reported in the result and the run continues.
      */
-    public function renewDue(?int $thresholdDays = null, bool $queue = false): EloquentCollection
+    public function renewDue(?int $thresholdDays = null, bool $queue = false): RenewalReport
     {
         return $this->container->make(RenewDueCertificatesAction::class)->execute($thresholdDays, $queue, $this->connection);
     }

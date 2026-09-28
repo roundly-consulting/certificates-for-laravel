@@ -31,9 +31,9 @@ it('renew-due renews what is due, and only that', function (): void {
     $due = Certificate::factory()->expiring(2)->forDomain('due.com')->create(['driver' => 'array']);
     Certificate::factory()->expiring(20)->forDomain('later.com')->create(['driver' => 'array']);
 
-    $renewed = app(RenewDueCertificatesAction::class)->execute(7);
+    $report = app(RenewDueCertificatesAction::class)->execute(7);
 
-    expect($renewed->modelKeys())->toBe([$due->id])
+    expect(array_map(fn (Certificate $certificate): int => $certificate->id, $report->renewed))->toBe([$due->id])
         ->and($due->fresh()?->status)->toBe(CertificateStatus::Renewed);
 });
 

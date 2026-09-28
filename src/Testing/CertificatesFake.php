@@ -12,12 +12,16 @@ use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
+use RoundlyConsulting\Certificates\DataTransferObjects\RenewalFailure;
+use RoundlyConsulting\Certificates\DataTransferObjects\RenewalReport;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Providers\ArrayProvider;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
+use RuntimeException;
+use Throwable;
 
 /**
  * In-memory stand-in for CertificatesManager, installed by `Certificates::fake()`.
@@ -27,7 +31,8 @@ use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
  * certificates live in memory, every driver is an ArrayProvider, and every mutating call
  * — through the facade, an injected manager, the `for()` handle or the HasCertificates
  * trait — is recorded for the `assert*` methods. Illegal lifecycle transitions and
- * unknown domains still throw, exactly as they do for real.
+ * unknown domains still throw, exactly as they do for real; `failRenewalOf()` makes chosen
+ * renewals fail the way a rejecting CA would.
  */
 final class CertificatesFake extends CertificatesManager
 {
@@ -48,6 +53,12 @@ final class CertificatesFake extends CertificatesManager
 
     /** @var list<int|null> */
     private array $renewedDue = [];
+
+    /** @var list<string> */
+    private array $failingRenewals = [];
+
+    /** @var list<string> */
+    private array $renewalFailures = [];
 
     /** @var list<array{0: string, 1: string|null}> */
     private array $revoked = [];
@@ -76,6 +87,17 @@ final class CertificatesFake extends CertificatesManager
         foreach ($certificates as $certificate) {
             $this->store[$certificate->domain] = $certificate;
         }
+
+        return $this;
+    }
+
+    /**
+     * Make renewals of these domains fail: the certificate moves to Failed and renew()
+     * throws, so renewDue() reports it under `failed` and carries on with the rest.
+     */
+    public function failRenewalOf(string ...$domains): static
+    {
+        $this->failingRenewals = [...$this->failingRenewals, ...array_values($domains)];
 
         return $this;
     }
@@ -195,6 +217,15 @@ final class CertificatesFake extends CertificatesManager
     {
         $certificate = $this->transition($certificate, CertificateStatus::Renewing);
 
+        if (in_array($certificate->domain, $this->failingRenewals, true)) {
+            $reason = "Renewal of [{$certificate->domain}] failed (CertificatesFake::failRenewalOf).";
+
+            $certificate->forceFill(['status' => CertificateStatus::Failed, 'last_error' => $reason]);
+            $this->renewalFailures[] = $certificate->domain;
+
+            throw new RuntimeException($reason);
+        }
+
         $certificate->forceFill([
             'status' => CertificateStatus::Renewed,
             'expires_at' => CarbonImmutable::now()->addDays(90),
@@ -216,17 +247,29 @@ final class CertificatesFake extends CertificatesManager
         return $certificate;
     }
 
-    public function renewDue(?int $thresholdDays = null, bool $queue = false): EloquentCollection
+    public function renewDue(?int $thresholdDays = null, bool $queue = false): RenewalReport
     {
         $this->renewedDue[] = $thresholdDays;
 
-        $due = $this->expiring($thresholdDays);
+        $renewed = [];
+        $queued = [];
+        $failed = [];
 
-        foreach ($due as $certificate) {
-            $queue ? $this->renewLater($certificate) : $this->renew($certificate);
+        foreach ($this->expiring($thresholdDays) as $certificate) {
+            if ($queue) {
+                $queued[] = $this->renewLater($certificate);
+
+                continue;
+            }
+
+            try {
+                $renewed[] = $this->renew($certificate);
+            } catch (Throwable $e) {
+                $failed[] = new RenewalFailure($certificate, $e);
+            }
         }
 
-        return $due;
+        return new RenewalReport($renewed, $queued, $failed);
     }
 
     public function revoke(Certificate|string $certificate, ?string $reason = null): Certificate
@@ -356,6 +399,16 @@ final class CertificatesFake extends CertificatesManager
     public function assertNothingRenewedDue(): void
     {
         Assert::assertSame([], $this->renewedDue, 'Expected no renew-due run.');
+    }
+
+    public function assertRenewalFailed(string $domain): void
+    {
+        Assert::assertContains($domain, $this->renewalFailures, "Expected the renewal of [{$domain}] to fail.");
+    }
+
+    public function assertNoRenewalFailures(): void
+    {
+        Assert::assertSame([], $this->renewalFailures, 'Expected no renewal to fail.');
     }
 
     /**

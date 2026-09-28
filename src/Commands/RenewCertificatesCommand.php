@@ -10,7 +10,8 @@ use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 
 /**
  * A thin caller: `Certificates::renewDue()` for the expiring set, or
- * `Certificates::renew()` / `renewLater()` for one domain.
+ * `Certificates::renew()` / `renewLater()` for one domain. Prints every certificate's
+ * outcome and exits non-zero when any of them failed.
  */
 final class RenewCertificatesCommand extends Command
 {
@@ -29,22 +30,30 @@ final class RenewCertificatesCommand extends Command
 
         $threshold = is_numeric($this->option('threshold')) ? (int) $this->option('threshold') : null;
 
-        $due = $certificates->renewDue($threshold, $queue);
+        $report = $certificates->renewDue($threshold, $queue);
 
-        if ($due->isEmpty()) {
+        if ($report->isEmpty()) {
             $this->info((string) trans('certificates::messages.commands.none_to_renew'));
 
             return self::SUCCESS;
         }
 
-        foreach ($due as $certificate) {
-            $this->info((string) trans(
-                $queue ? 'certificates::messages.commands.queued' : 'certificates::messages.commands.renewed',
-                ['domain' => $certificate->domain],
-            ));
+        foreach ($report->renewed as $certificate) {
+            $this->info((string) trans('certificates::messages.commands.renewed', ['domain' => $certificate->domain]));
         }
 
-        return self::SUCCESS;
+        foreach ($report->queued as $certificate) {
+            $this->info((string) trans('certificates::messages.commands.queued', ['domain' => $certificate->domain]));
+        }
+
+        foreach ($report->failed as $failure) {
+            $this->error((string) trans('certificates::messages.commands.renew_failed', [
+                'domain' => $failure->certificate->domain,
+                'reason' => $failure->reason(),
+            ]));
+        }
+
+        return $report->hasFailures() ? self::FAILURE : self::SUCCESS;
     }
 
     private function renewDomain(CertificatesManager $certificates, string $domain, bool $queue): int

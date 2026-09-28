@@ -4,17 +4,25 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Actions;
 
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Facades\Event;
+use RoundlyConsulting\Certificates\DataTransferObjects\RenewalFailure;
+use RoundlyConsulting\Certificates\DataTransferObjects\RenewalReport;
 use RoundlyConsulting\Certificates\Events\CertificateExpiring;
 use RoundlyConsulting\Certificates\Jobs\RenewCertificateJob;
-use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use Throwable;
 
 /**
  * Renew every active certificate expiring within the threshold (default:
  * `certificates.renewal.threshold_days`). CertificateExpiring fires for each; each one is
  * then renewed inline, or — with `$queue` — handed to RenewCertificateJob.
+ *
+ * Each certificate is attempted independently: one that fails is reported (and handed to
+ * the exception handler) and the run moves on, so a single CA rejection cannot leave the
+ * rest of the due set to expire. A failed inline renewal is already marked Failed with
+ * CertificateFailed by RenewCertificateAction; a failed dispatch leaves the row as it was,
+ * so the next run picks it up again.
  *
  * Reach it through `Certificates::renewDue()` (what `certificates:renew` runs).
  */
@@ -22,30 +30,39 @@ final readonly class RenewDueCertificatesAction
 {
     public function __construct(
         private RenewCertificateAction $renew,
+        private Dispatcher $bus,
     ) {}
 
-    /**
-     * @return Collection<int, Certificate> the certificates that were due, soonest first
-     */
-    public function execute(?int $thresholdDays = null, bool $queue = false, ?string $connection = null): Collection
+    public function execute(?int $thresholdDays = null, bool $queue = false, ?string $connection = null): RenewalReport
     {
         $certificates = CertificateModel::class()::on($connection)
             ->expiring($thresholdDays)
             ->orderBy('expires_at')
             ->get();
 
+        $renewed = [];
+        $queued = [];
+        $failed = [];
+
         foreach ($certificates as $certificate) {
-            Event::dispatch(new CertificateExpiring($certificate, $certificate->daysUntilExpiry() ?? 0));
+            try {
+                Event::dispatch(new CertificateExpiring($certificate, $certificate->daysUntilExpiry() ?? 0));
 
-            if ($queue) {
-                RenewCertificateJob::dispatch($certificate->id, $connection);
+                if ($queue) {
+                    $this->bus->dispatch(new RenewCertificateJob($certificate->id, $connection));
+                    $queued[] = $certificate;
 
-                continue;
+                    continue;
+                }
+
+                $renewed[] = $this->renew->execute($certificate);
+            } catch (Throwable $e) {
+                report($e);
+
+                $failed[] = new RenewalFailure($certificate, $e);
             }
-
-            $this->renew->execute($certificate);
         }
 
-        return $certificates;
+        return new RenewalReport($renewed, $queued, $failed);
     }
 }
