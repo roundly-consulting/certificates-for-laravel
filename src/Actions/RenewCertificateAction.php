@@ -13,6 +13,7 @@ use RoundlyConsulting\Certificates\Events\CertificateFailed;
 use RoundlyConsulting\Certificates\Events\CertificateRenewed;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use Throwable;
 
 /**
@@ -30,6 +31,7 @@ final readonly class RenewCertificateAction
 {
     public function __construct(
         private CertificateProviderManager $manager,
+        private CachedStatusResolver $statusCache,
     ) {}
 
     public function execute(Certificate $certificate): Certificate
@@ -72,6 +74,9 @@ final readonly class RenewCertificateAction
             Event::dispatch(new CertificateFailed($certificate, $e->getMessage()));
 
             throw $e;
+        } finally {
+            // Whatever happened, the backend changed: a cached report predates it.
+            $this->statusCache->forget($certificate->driver, $certificate->name);
         }
 
         $certificate->forceFill([

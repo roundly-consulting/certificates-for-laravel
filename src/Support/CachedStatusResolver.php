@@ -12,7 +12,9 @@ use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 
 /**
  * Caches provider status() lookups so repeated checks don't hit the backend
- * (e.g. an HTTP round-trip per call) on every request.
+ * (e.g. an HTTP round-trip per call) on every request. The issue and renew
+ * actions forget a certificate's entry after provisioning, so a report never
+ * outlives the change it describes.
  */
 final class CachedStatusResolver
 {

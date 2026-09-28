@@ -20,6 +20,7 @@ use RoundlyConsulting\Certificates\Exceptions\InvalidDomainException;
 use RoundlyConsulting\Certificates\Exceptions\ProvisioningInProgressException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Rules\ValidDomain;
+use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 use RoundlyConsulting\Certificates\Support\CertificateName;
 use RoundlyConsulting\Certificates\Support\ProvisioningLock;
@@ -36,6 +37,7 @@ final readonly class IssueCertificateAction
 {
     public function __construct(
         private CertificateProviderManager $manager,
+        private CachedStatusResolver $statusCache,
     ) {}
 
     public function execute(IssueCertificateData $data, ?string $connection = null): Certificate
@@ -109,6 +111,9 @@ final readonly class IssueCertificateAction
             Event::dispatch(new CertificateFailed($certificate, $e->getMessage()));
 
             throw $e;
+        } finally {
+            // Whatever happened, the backend changed: a cached report predates it.
+            $this->statusCache->forget($driver, $name);
         }
 
         if ($report !== null && ! $report->status->isActive()) {
