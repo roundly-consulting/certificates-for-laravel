@@ -27,5 +27,31 @@ Initial public release.
 - Artisan commands `certificates:issue`, `certificates:list`, `certificates:renew` (inline or
   queued), `certificates:check`, `certificates:prune` and `certificates:sync`.
 - Expiry monitoring with warning and critical windows, built on alerts-for-laravel.
-- Custom providers via `CertificateProvider`, and `Certificates::fake()` for testing without a
-  backend.
+- Custom providers via `CertificateProvider` (`Certificates::extend()`), and `Certificates::fake()`
+  for testing without a backend.
+- Lifecycle verbs on the facade, each backed by an action: `Certificates::renew()`, `renewLater()`,
+  `renewDue()`, `revoke()`, `expire()`, `sync()`, `prune()` and `expiring()`, plus
+  `Certificates::for($domain)->renew()`, `->renewLater()`, `->revoke()` and `->expire()`.
+- `CertificatesFake` records renewals, queued renewals, renew-due runs, revocations, expirations,
+  syncs and prunes (`assertRenewed()`, `assertRenewedLater()`, `assertRenewedDue()`,
+  `assertRevoked()`, `assertExpired()`, `assertSynced()`, `assertPruned()` and their
+  `assertNothing*()` / `assertNot*()` forms), and `seed()`s certificates it did not issue.
+
+### Changed
+
+- The facade root is `CertificatesManager` (was `CertificateService`) and the driver manager is
+  `CertificateProviderManager` (was `CertificateManager`). The `certificates()` helper returns the
+  facade root.
+- `certificates:renew`, `certificates:sync` and `certificates:prune` call the facade. Given a
+  domain, `certificates:renew` renews its most recent registry row and no longer dispatches
+  `CertificateExpiring` for it.
+- Expiry monitoring schedules through alerts' `Health::for($notifiable)->monitor()`.
+
+### Fixed
+
+- `Certificates::fake()` built its fake without the parent constructor, so inherited methods such as
+  `driver()` threw.
+- A renewal the provider rejects now moves the certificate to `Failed` and fires
+  `CertificateFailed`, instead of leaving it stuck in `Renewing`.
+- `RenewCertificateJob` re-reads the certificate through the `certificates.model` seam, on the
+  database connection it was queued from.

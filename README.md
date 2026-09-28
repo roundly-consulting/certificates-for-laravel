@@ -21,7 +21,7 @@
 
 Request, track, and renew the TLS certificates for your domains — directly from Laravel.
 
-The package gives you a framework-native API to **issue**, **list**, **find**, and **renew** TLS
+The package gives you a framework-native API to **issue**, **list**, **find**, **renew** and **revoke** TLS
 certificates, plus a local **registry** (an Eloquent model) that records every certificate's
 status and expiry so you can answer "which certificates expire in 14 days?" with an ordinary
 query.
@@ -198,7 +198,62 @@ $certificate = Certificates::for('shop.tenant.com')
 ```
 
 The builder also exposes `->issueIfMissing()`, `->exists()`, `->status()`, `->find()`,
-`->statusReport()`, and `->fresh()`.
+`->statusReport()`, and `->fresh()` — plus the lifecycle verbs below for the domain's registry row.
+
+### Renew, revoke and expire
+
+Every lifecycle verb takes a registry `Certificate` or a domain (its most recent row), flat or
+through the `for()` handle. An unknown domain, or a status that can't make the move (e.g. renewing
+a revoked certificate), throws `CertificateException`.
+
+```php
+Certificates::renew('app.example.com');                  // now, through the certificate's own driver
+Certificates::renewLater('app.example.com');             // queue RenewCertificateJob (renewal.queue)
+Certificates::revoke($certificate, 'key compromise');    // Revoked + CertificateRevoked
+Certificates::expire('app.example.com');                 // Expired + CertificateExpired
+
+Certificates::for('app.example.com')->renew();           // same verbs on the domain handle
+Certificates::for('app.example.com')->using('acme')->revoke(); // only the acme row is touched
+
+Certificates::expiring(14);                   // Collection<int, Certificate>, soonest first
+Certificates::renewDue();                     // renew everything inside renewal.threshold_days
+Certificates::renewDue(7, queue: true);       // …or queue each one
+Certificates::sync('kubernetes');             // pull live provider state into the registry → int
+Certificates::prune(30);                      // soft-delete stale expired/failed/revoked rows → int
+```
+
+A renewal the provider rejects moves the row to `Failed` and fires `CertificateFailed` before the
+exception is rethrown, so it raises an alert instead of sitting in `Renewing`. `revoke()` records
+the revocation in the registry; it does not contact the CA or the cluster.
+
+### Without the facade
+
+The facade is sugar over `CertificatesManager`. Inject it for the same API, or call an action
+directly:
+
+```php
+use RoundlyConsulting\Certificates\Actions\RevokeCertificateAction;
+use RoundlyConsulting\Certificates\CertificatesManager;
+use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
+
+final class SiteCertificates
+{
+    public function __construct(private CertificatesManager $certificates) {}
+
+    public function launch(string $domain): void
+    {
+        $this->certificates->issue(IssueCertificateData::make($domain));
+        $this->certificates->for($domain)->renewLater();
+    }
+}
+
+// The raw use case, e.g. from your own action:
+app(RevokeCertificateAction::class)->execute($certificate, 'key compromise');
+```
+
+The actions are `IssueCertificateAction`, `RenewCertificateAction`, `RenewDueCertificatesAction`,
+`RevokeCertificateAction`, `ExpireCertificateAction`, `SyncCertificatesAction` and
+`PruneCertificatesAction`. The `certificates()` helper returns the same manager.
 
 ### ACME / Let's Encrypt
 
@@ -300,14 +355,14 @@ Every command also accepts `--connection=`.
 
 ### Macros
 
-`CertificateService` and `CertificateBuilder` are macroable — bolt on your own domain methods (e.g.
+`CertificatesManager` and `CertificateBuilder` are macroable — bolt on your own domain methods (e.g.
 from `AppServiceProvider::boot()`):
 
 ```php
-use RoundlyConsulting\Certificates\CertificateService;
+use RoundlyConsulting\Certificates\CertificatesManager;
 
-CertificateService::macro('issueForTeam', function (Team $team, string $domain) {
-    /** @var CertificateService $this */
+CertificatesManager::macro('issueForTeam', function (Team $team, string $domain) {
+    /** @var CertificatesManager $this */
     return $this->for($domain)->owner($team)->issue();
 });
 
@@ -322,6 +377,7 @@ Certificates::exists('app.example.com');     // bool
 Certificates::find('app.example.com');       // ?Models\Certificate (registry lookup)
 Certificates::status('app.example.com');     // ?CertificateStatus (registry enum)
 Certificates::statusReport('app.example.com'); // ?CertificateStatusReport (live, cached)
+Certificates::expiring(14, 'acme');          // Collection<int, Certificate> expiring within 14 days
 Certificates::driver('null');                // resolve a specific provider instance
 Certificates::certificateName('app.example.com'); // "generated-tls-app-example-com"
 ```
@@ -368,11 +424,11 @@ Listen to any of these (all carry the Eloquent `Models\Certificate`):
 
 - `CertificateRequested`
 - `CertificateIssued`
-- `CertificateFailed` (also a `string $reason`)
+- `CertificateFailed` (also a `string $reason`) — a failed issuance or renewal
 - `CertificateRenewed`
 - `CertificateExpiring` (also an `int $daysUntilExpiry`)
-- `CertificateRevoked` (also a `?string $reason`) — dispatched by `Certificate::markRevoked()`
-- `CertificateExpired` — dispatched by `Certificate::markExpired()`
+- `CertificateRevoked` (also a `?string $reason`) — dispatched by `Certificates::revoke()`
+- `CertificateExpired` — dispatched by `Certificates::expire()`
 
 ### Artisan commands
 
@@ -385,9 +441,11 @@ php artisan certificates:prune {--days=30} {--status=} {--connection=}
 php artisan certificates:sync {--driver=} {--connection=}
 ```
 
-`certificates:renew` renews every certificate expiring within the threshold (or a single domain),
-dispatching `CertificateExpiring` for each. Pass `--queue` to dispatch `RenewCertificateJob` onto
-the queue named by `renewal.queue` instead of renewing inline.
+Every command is a thin caller of the facade. `certificates:renew` runs `Certificates::renewDue()` —
+renewing every certificate expiring within the threshold and dispatching `CertificateExpiring` for
+each — or, given a domain, `Certificates::renew()` for its most recent row. Pass `--queue` to
+dispatch `RenewCertificateJob` onto the queue named by `renewal.queue` instead of renewing inline.
+`certificates:sync` and `certificates:prune` run `Certificates::sync()` / `Certificates::prune()`.
 
 ### Expiry monitoring via alerts
 
@@ -437,7 +495,7 @@ an alert automatically when `alerts.enabled` is true.
 **Registry-wide signal.** Set `alerts.register_check` to register a single global
 `CertificateExpiryCheck` with the alerts registry — it fails when any managed certificate is inside
 the critical window. Silence expiry alerts during a planned migration with alerts'
-`Health::mute('certificate_expiry', $until)`.
+`Health::silences()->mute('certificate_expiry', until: $until)`.
 
 #### Scheduling renewals
 
@@ -447,19 +505,25 @@ The package does not register a schedule — keep that in your app. A daily rene
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('certificates:renew')->daily();
+
+// or, without the command:
+Schedule::call(fn () => Certificates::renewDue(queue: true))->daily();
 ```
 
 ### Custom providers
 
-Implement `CertificateProvider` and register it on the manager (e.g. from a service provider's
+Implement `CertificateProvider` and register it through the facade (e.g. from a service provider's
 `boot()`):
 
 ```php
-use RoundlyConsulting\Certificates\CertificateManager;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
+use RoundlyConsulting\Certificates\Facades\Certificates;
 
-app(CertificateManager::class)->extend('acme', fn (): CertificateProvider => new MyAcmeProvider());
+Certificates::extend('my-ca', fn (): CertificateProvider => new MyCaProvider());
 ```
+
+`Certificates::extend()` registers the driver on `CertificateProviderManager`, the driver manager
+behind `Certificates::driver()`.
 
 `CertificateProvider` exposes `get(): Collection`, `exists(string $name, string $domain): bool`,
 and `generate(string $name, string $domain): void`. Opt-in capability interfaces:
@@ -476,15 +540,35 @@ To persist issued material, implement `Contracts\CertificateStore` (the package 
 ### Testing without a backend
 
 ```php
-Certificates::fake();
+$fake = Certificates::fake();
 
 $this->post('/sites', ['domain' => 'app.example.com']);
 
 Certificates::assertIssued('app.example.com');
+Certificates::assertNothingRevoked();
 ```
 
-The fake records issuances in memory and never touches a real provider. Assertion helpers:
-`assertIssued`, `assertNotIssued`, `assertIssuedCount`, `assertRequested`, `assertFailed`.
+`Certificates::fake()` swaps an in-memory `Testing\CertificatesFake` in for the facade **and** the
+container, so constructor-injected `CertificatesManager`s, the `for()` handle and
+`HasCertificates::requestCertificate()` are all recorded. It never touches a provider, the registry,
+the queue or the event bus; every `driver()` is an in-memory `ArrayProvider`. Unknown domains and
+illegal status moves still throw, as they do for real. `$fake->seed($certificate)` stores a
+certificate without recording an issuance.
+
+| Call | Assertions |
+|---|---|
+| `issue`, `issueIfMissing`, `generate`, `for()->issue()`, `requestCertificate()` | `assertIssued($domain)`, `assertNotIssued($domain)`, `assertIssuedCount($n)`, `assertNothingIssued()`, `assertRequested($domain)` |
+| `recordFailure($domain)` | `assertFailed($domain)` |
+| `renew`, `for()->renew()` (and inline `renewDue`) | `assertRenewed($domain)`, `assertNotRenewed($domain)`, `assertNothingRenewed()` |
+| `renewLater`, `for()->renewLater()` (and `renewDue(queue: true)`) | `assertRenewedLater($domain)`, `assertNothingRenewedLater()` |
+| `renewDue` | `assertRenewedDue(?$thresholdDays)`, `assertNothingRenewedDue()` |
+| `revoke`, `for()->revoke()` | `assertRevoked($domain, ?$reason)`, `assertNotRevoked($domain)`, `assertNothingRevoked()` |
+| `expire`, `for()->expire()` | `assertExpired($domain)`, `assertNothingExpired()` |
+| `sync` | `assertSynced(?$driver)`, `assertNothingSynced()` |
+| `prune` | `assertPruned(?$days)`, `assertNothingPruned()` |
+
+`monitorExpiry()` builds an alerts schedule, so fake it with alerts' `Health::fake()`
+(`assertMonitored`).
 
 ## Testing
 
