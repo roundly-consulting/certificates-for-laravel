@@ -12,8 +12,9 @@ use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 /**
  * Pull a driver's live certificates into the registry, one row per (driver, name).
- * Providers that report status also refresh status, expiry and issuer; for the rest a
- * new row starts as Issued and an existing row keeps its status.
+ * Providers that report status also refresh status, expiry, issuer, serial and fingerprint
+ * (a Pending report never demotes a Requested/Renewing row); for the rest a new — or
+ * revived pruned — row starts as Issued and an existing row keeps its status.
  *
  * Reach it through `Certificates::sync()` (what `certificates:sync` runs).
  */
@@ -34,10 +35,17 @@ final readonly class SyncCertificatesAction
         $count = 0;
 
         foreach ($provider->get() as $remote) {
-            $model = CertificateModel::class()::on($connection)->firstOrNew([
+            // unique(driver, name) also covers pruned rows: a certificate the provider still
+            // reports revives its pruned row instead of colliding with it.
+            $model = CertificateModel::class()::on($connection)->withTrashed()->firstOrNew([
                 'driver' => $driver,
                 'name' => $remote->name,
             ]);
+            $revived = $model->trashed();
+
+            if ($revived) {
+                $model->forceFill([$model->getDeletedAtColumn() => null]);
+            }
 
             if ($connection !== null) {
                 $model->setConnection($connection);
@@ -54,7 +62,7 @@ final readonly class SyncCertificatesAction
                     'serial' => $report->serial ?? $model->serial,
                     'fingerprint' => $report->fingerprint ?? $model->fingerprint,
                 ]);
-            } elseif (! $model->exists) {
+            } elseif (! $model->exists || $revived) {
                 $model->forceFill(['status' => CertificateStatus::Issued]);
             }
 

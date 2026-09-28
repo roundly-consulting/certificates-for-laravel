@@ -114,10 +114,27 @@ final readonly class IssueCertificateAction
 
     private function upsertCertificate(string $name, IssueCertificateData $data, string $driver, ?string $connection): Certificate
     {
-        $model = CertificateModel::class()::on($connection)->firstOrNew([
+        // unique(driver, name) also covers pruned (soft-deleted) rows, so a re-issue must
+        // find and revive the pruned row rather than insert a duplicate of it.
+        $model = CertificateModel::class()::on($connection)->withTrashed()->firstOrNew([
             'driver' => $driver,
             'name' => $name,
         ]);
+
+        if ($model->trashed()) {
+            // A pruned row comes back as a fresh registration, not with its dead history.
+            $model->forceFill([
+                $model->getDeletedAtColumn() => null,
+                'issued_at' => null,
+                'expires_at' => null,
+                'last_renewed_at' => null,
+                'last_error' => null,
+                'serial' => null,
+                'fingerprint' => null,
+                'certifiable_type' => null,
+                'certifiable_id' => null,
+            ]);
+        }
 
         $allDomains = $data->allDomains();
 
