@@ -91,8 +91,12 @@ return [
     | Generation lock
     |--------------------------------------------------------------------------
     |
-    | A cache lock guards against provisioning the same certificate twice
-    | concurrently. Configure the lock name and how long it is held.
+    | A cache lock per certificate ("{name}:{certificate name}") guards against
+    | provisioning the same certificate twice concurrently; other certificates
+    | are never blocked. While it is held, issue() throws
+    | ProvisioningInProgressException and generate() returns false.
+    | "locked_for_seconds" is the lock's safety expiry — keep it above your
+    | slowest issuance (an ACME order polls for up to attempts x seconds).
     |
     */
     'lock' => [

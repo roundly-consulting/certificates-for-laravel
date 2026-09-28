@@ -14,6 +14,7 @@ use RoundlyConsulting\Certificates\Events\CertificateFailed;
 use RoundlyConsulting\Certificates\Events\CertificateIssued;
 use RoundlyConsulting\Certificates\Events\CertificateRequested;
 use RoundlyConsulting\Certificates\Exceptions\InvalidDomainException;
+use RoundlyConsulting\Certificates\Exceptions\ProvisioningInProgressException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Tests\Fixtures\Tenant;
 
@@ -79,13 +80,12 @@ it('records a failure and rethrows when the provider throws', function (): void 
     Event::assertDispatched(CertificateFailed::class);
 });
 
-it('returns the requested record when the lock is contended', function (): void {
-    $lock = Cache::lock('certificates:generate', 5, 'generated-tls-locked-example-com');
+it('throws instead of returning an unprovisioned record when the lock is contended', function (): void {
+    $lock = Cache::lock('certificates:generate:generated-tls-locked-example-com', 5);
     $lock->get();
 
-    $certificate = issueAction()->execute(IssueCertificateData::make('locked.example.com'));
-
-    expect($certificate->status)->toBe(CertificateStatus::Requested);
+    expect(fn () => issueAction()->execute(IssueCertificateData::make('locked.example.com')))
+        ->toThrow(ProvisioningInProgressException::class);
 
     $lock->forceRelease();
 });

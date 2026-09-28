@@ -17,7 +17,7 @@ it('still generates without a registry table', function (): void {
 
 it('returns false from generate when the lock is contended and no registry', function (): void {
     $service = app(CertificatesManager::class);
-    $lock = Cache::lock('certificates:generate', 5, 'someone-else');
+    $lock = Cache::lock('certificates:generate:generated-tls-legacy-example-com', 5);
     $lock->get();
 
     expect($service->generate('legacy.example.com'))->toBeFalse();

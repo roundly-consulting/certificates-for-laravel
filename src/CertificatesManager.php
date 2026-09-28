@@ -5,12 +5,10 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Certificates;
 
 use Closure;
-use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Macroable;
@@ -31,11 +29,13 @@ use RoundlyConsulting\Certificates\DataTransferObjects\IssueCertificateData;
 use RoundlyConsulting\Certificates\DataTransferObjects\RenewalReport;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
+use RoundlyConsulting\Certificates\Exceptions\ProvisioningInProgressException;
 use RoundlyConsulting\Certificates\Jobs\RenewCertificateJob;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateBuilder;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\Support\ProvisioningLock;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 /**
@@ -97,27 +97,30 @@ class CertificatesManager
     /**
      * Provision a certificate for the given domain.
      *
-     * A cache lock guards against concurrent provisioning of the same domain.
-     * Returns false when the lock could not be acquired. When the registry
-     * table exists, the lifecycle is recorded and events fire via the action.
+     * A per-certificate cache lock guards against concurrent provisioning of the same
+     * domain: returns false, without provisioning, while another process holds it. When
+     * the registry table exists, the lifecycle is recorded and events fire via the action.
      */
     public function generate(string $domain): bool
     {
         if ($this->registryAvailable()) {
-            $this->issue(IssueCertificateData::make($domain));
+            try {
+                $this->issue(IssueCertificateData::make($domain));
+            } catch (ProvisioningInProgressException) {
+                return false;
+            }
 
             return true;
         }
 
-        $name = $this->certificateName($domain);
-        $lock = $this->generateLock($name);
+        $lock = ProvisioningLock::for($this->certificateName($domain));
 
         if (! $lock->get()) {
             return false;
         }
 
         try {
-            $this->providers->provider()->generate($name, $domain);
+            $this->providers->provider()->generate($this->certificateName($domain), $domain);
         } finally {
             $lock->release();
         }
@@ -359,14 +362,5 @@ class CertificatesManager
     private function resolver(): CachedStatusResolver
     {
         return $this->statusResolver ??= $this->container->make(CachedStatusResolver::class);
-    }
-
-    private function generateLock(string $owner): Lock
-    {
-        return Cache::lock(
-            name: (string) config('certificates.lock.name', 'certificates:generate'),
-            seconds: (int) config('certificates.lock.locked_for_seconds', 5),
-            owner: $owner,
-        );
     }
 }

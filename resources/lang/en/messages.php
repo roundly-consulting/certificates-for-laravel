@@ -7,6 +7,7 @@ return [
     'unknown_provider' => 'Certificate provider driver ":driver" is not defined.',
     'illegal_transition' => 'Cannot transition a certificate from ":from" to ":to".',
     'not_found' => 'No certificate is registered for ":domain".',
+    'provisioning_in_progress' => 'The certificate for ":domain" is already being provisioned; try again once that finishes.',
     'provider_reported' => 'The :driver provider reports the certificate for ":domain" as :status.',
 
     'commands' => [
