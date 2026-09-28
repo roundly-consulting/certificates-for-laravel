@@ -9,6 +9,7 @@ use RoundlyConsulting\Alerts\Check;
 use RoundlyConsulting\Alerts\CheckResult;
 use RoundlyConsulting\Alerts\HealthCheck;
 use RoundlyConsulting\Alerts\Notifications\HealthCheckFailedNotification;
+use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 
@@ -123,6 +124,13 @@ final class CertificateExpiryCheck extends Check
     private function evaluate(Certificate $certificate): CheckResult
     {
         $meta = $this->metaFor($certificate);
+
+        if ($certificate->status === CertificateStatus::Failed) {
+            return CheckResult::failed(
+                (string) trans('certificates::messages.alerts.failed', ['domain' => $certificate->domain]),
+                [...$meta, 'band' => 'critical'],
+            );
+        }
 
         if ($certificate->status->isTerminal() || $certificate->isExpired()) {
             return CheckResult::failed(

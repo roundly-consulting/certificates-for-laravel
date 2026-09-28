@@ -53,7 +53,7 @@ it('reports active and terminal states', function (): void {
         ->and(CertificateStatus::Renewed->isActive())->toBeTrue()
         ->and(CertificateStatus::Pending->isActive())->toBeFalse();
 
-    expect(CertificateStatus::Failed->isTerminal())->toBeTrue()
+    expect(CertificateStatus::Failed->isTerminal())->toBeFalse()
         ->and(CertificateStatus::Revoked->isTerminal())->toBeTrue()
         ->and(CertificateStatus::Expired->isTerminal())->toBeTrue()
         ->and(CertificateStatus::Issued->isTerminal())->toBeFalse();
@@ -73,6 +73,7 @@ it('allows the documented transitions', function (CertificateStatus $from, Certi
     [CertificateStatus::Renewed, CertificateStatus::Renewing],
     [CertificateStatus::Renewed, CertificateStatus::Expired],
     [CertificateStatus::Renewed, CertificateStatus::Revoked],
+    [CertificateStatus::Failed, CertificateStatus::Renewing],
 ]);
 
 it('rejects every disallowed transition pair', function (): void {
@@ -88,7 +89,7 @@ it('rejects every disallowed transition pair', function (): void {
 });
 
 it('treats terminal statuses as having no transitions', function (): void {
-    expect(CertificateStatus::Failed->allowedTransitions())->toBe([])
+    expect(CertificateStatus::Failed->allowedTransitions())->toBe([CertificateStatus::Renewing])
         ->and(CertificateStatus::Expired->allowedTransitions())->toBe([])
         ->and(CertificateStatus::Revoked->allowedTransitions())->toBe([]);
 });

@@ -74,10 +74,10 @@ it('queues a single domain with --queue', function (): void {
 });
 
 it('fails when a single domain cannot be renewed', function (): void {
-    Certificate::factory()->failed()->create(['domain' => 'dead.example.com', 'driver' => 'array']);
+    Certificate::factory()->create(['domain' => 'dead.example.com', 'driver' => 'array', 'status' => CertificateStatus::Revoked]);
 
     $this->artisan('certificates:renew', ['domain' => 'dead.example.com'])
-        ->expectsOutputToContain('Cannot transition a certificate from "failed" to "renewing".')
+        ->expectsOutputToContain('Cannot transition a certificate from "revoked" to "renewing".')
         ->assertExitCode(1);
 });
 

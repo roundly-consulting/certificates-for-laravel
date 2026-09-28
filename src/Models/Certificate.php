@@ -208,13 +208,17 @@ class Certificate extends Model
     }
 
     /**
+     * Certificates whose live certificate runs out within `$days` (default:
+     * `certificates.renewal.threshold_days`): Issued, Renewed — and Failed, since a failed
+     * renewal leaves the old certificate running out with nothing renewing it.
+     *
      * @param  Builder<Certificate>  $query
      */
     public function scopeExpiring(Builder $query, ?int $days = null): void
     {
         $days ??= (int) config('certificates.renewal.threshold_days', 21);
 
-        $query->whereIn('status', [CertificateStatus::Issued, CertificateStatus::Renewed])
+        $query->whereIn('status', [CertificateStatus::Issued, CertificateStatus::Renewed, CertificateStatus::Failed])
             ->whereNotNull('expires_at')
             ->whereBetween('expires_at', [CarbonImmutable::now(), CarbonImmutable::now()->addDays($days)]);
     }

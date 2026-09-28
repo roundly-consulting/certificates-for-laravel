@@ -18,9 +18,9 @@ use Throwable;
 /**
  * Renew one registry certificate through its own driver.
  *
- * The row moves Issued/Renewed → Renewing → Renewed. When the provider throws, the row
- * moves to Failed and CertificateFailed fires before the exception is rethrown — it is
- * never left stuck in Renewing, a status nothing can renew out of.
+ * The row moves Issued/Renewed/Failed → Renewing → Renewed. When the provider throws, the
+ * row moves to Failed and CertificateFailed fires before the exception is rethrown — it is
+ * never left stuck in Renewing, and a Failed row stays renewable (renewDue() retries it).
  *
  * Reach it through `Certificates::renew()` / `Certificates::for($domain)->renew()`.
  */

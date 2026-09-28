@@ -40,11 +40,12 @@ enum CertificateStatus: string
     }
 
     /**
-     * Whether the status is a dead end (no further lifecycle).
+     * Whether the status is a dead end (no further lifecycle; only a fresh issue() revives
+     * the row). Failed is not: a failed issuance or renewal may be renewed again.
      */
     public function isTerminal(): bool
     {
-        return $this === self::Failed || $this === self::Revoked || $this === self::Expired;
+        return $this === self::Revoked || $this === self::Expired;
     }
 
     /**
@@ -68,7 +69,10 @@ enum CertificateStatus: string
             self::Issued => [self::Renewing, self::Expired, self::Revoked],
             self::Renewing => [self::Renewed, self::Failed],
             self::Renewed => [self::Renewing, self::Expired, self::Revoked],
-            self::Failed, self::Expired, self::Revoked => [],
+            // A failure is usually transient (a CA hiccup, a DNS delay): the live
+            // certificate still runs out, so the renewal must stay retryable.
+            self::Failed => [self::Renewing],
+            self::Expired, self::Revoked => [],
         };
     }
 }

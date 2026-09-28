@@ -34,7 +34,7 @@ it('renews an active certificate and fires the renewed event', function (): void
 });
 
 it('rejects renewing a terminal certificate', function (): void {
-    $certificate = Certificate::factory()->failed()->create(['driver' => 'array']);
+    $certificate = Certificate::factory()->create(['driver' => 'array', 'status' => CertificateStatus::Revoked]);
 
     app(RenewCertificateAction::class)->execute($certificate);
 })->throws(CertificateException::class);

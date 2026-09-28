@@ -196,8 +196,9 @@ class CertificatesManager
     }
 
     /**
-     * Active registry certificates expiring within `$days` (default:
-     * `certificates.renewal.threshold_days`), soonest first.
+     * Registry certificates expiring within `$days` (default:
+     * `certificates.renewal.threshold_days`), soonest first — Issued, Renewed, and Failed
+     * ones whose live certificate still runs out (so a failed renewal is retried).
      *
      * @return EloquentCollection<int, Certificate>
      */

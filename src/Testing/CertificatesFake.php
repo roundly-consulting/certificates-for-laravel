@@ -202,7 +202,7 @@ final class CertificatesFake extends CertificatesManager
 
         $due = array_filter(
             $this->store,
-            static fn (Certificate $certificate): bool => $certificate->status->isActive()
+            static fn (Certificate $certificate): bool => ($certificate->status->isActive() || $certificate->status === CertificateStatus::Failed)
                 && $certificate->expires_at !== null
                 && $certificate->expires_at->between(CarbonImmutable::now(), $until)
                 && ($driver === null || $certificate->driver === $driver),
