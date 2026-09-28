@@ -21,7 +21,8 @@ use RoundlyConsulting\Certificates\Support\CertificateModel;
  *    row's meta); returns ok/warning/failed banded on lead time, and failed for a
  *    terminal certificate (expired/revoked/failed);
  *  - registry-wide — no certificate id; fails when any managed certificate is inside
- *    the critical window, otherwise warns/ok on the closest one.
+ *    the critical window, past its expiry, Expired or Failed, otherwise warns/ok on the
+ *    closest one (revoked certificates are not counted).
  */
 final class CertificateExpiryCheck extends Check
 {
@@ -83,11 +84,20 @@ final class CertificateExpiryCheck extends Check
         $affected = [];
         $worst = CheckResult::ok((string) trans('certificates::messages.alerts.registry_ok'));
 
+        // Every certificate that is down or about to be: Issued/Renewed ones inside the
+        // warning window — including any already past expiry — plus Failed and Expired ones.
+        // Revoked rows are a deliberate decision (alerted once, via CertificateRevoked),
+        // not something the registry signal should stay red over.
         CertificateModel::class()::query()
-            ->active()
-            ->where(function ($query): void {
-                $query->whereNull('expires_at')
-                    ->orWhere('expires_at', '<=', now()->addDays($this->warningDays()));
+            ->where(function ($query) use ($warningDays): void {
+                $query->whereIn('status', [CertificateStatus::Failed, CertificateStatus::Expired])
+                    ->orWhere(function ($query) use ($warningDays): void {
+                        $query->whereIn('status', [CertificateStatus::Issued, CertificateStatus::Renewed])
+                            ->where(function ($query) use ($warningDays): void {
+                                $query->whereNull('expires_at')
+                                    ->orWhere('expires_at', '<=', now()->addDays($warningDays));
+                            });
+                    });
             })
             ->orderBy('expires_at')
             ->each(function (Certificate $certificate) use (&$affected, &$worst): void {

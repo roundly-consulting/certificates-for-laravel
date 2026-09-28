@@ -34,7 +34,7 @@ return [
         'expired' => 'The certificate for :domain has expired or is no longer valid.',
         'failed' => 'The last issuance or renewal of the certificate for :domain failed.',
         'missing' => 'The certificate could not be resolved for the expiry check.',
-        'registry_ok' => 'No certificates are within the critical expiry window.',
-        'registry_failed' => ':count certificate(s) are within the critical expiry window.',
+        'registry_ok' => 'No certificate is expired, failed or within the critical expiry window.',
+        'registry_failed' => ':count certificate(s) are expired, failed or within the critical expiry window.',
     ],
 ];

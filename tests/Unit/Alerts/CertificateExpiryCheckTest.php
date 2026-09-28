@@ -151,3 +151,31 @@ it('runs registry-wide and warns when the closest cert is only in the warning wi
 
     expect($result->status)->toBe(Status::Warning);
 });
+
+/**
+ * Regression: the registry-wide check scanned only active() rows (Issued/Renewed and not
+ * yet past expiry), so a lapsed, Expired or Failed certificate was invisible and the
+ * global signal read "ok" while a certificate was down.
+ */
+it('runs registry-wide and fails for a certificate that is down', function (Closure $make): void {
+    certExpiringInDays(40);
+    $down = $make();
+
+    $result = (new CertificateExpiryCheck)->check();
+
+    expect($result->status)->toBe(Status::Failed)
+        ->and($result->meta['affected'])->toHaveCount(1)
+        ->and($result->meta['affected'][0]['certificate_id'])->toBe($down->id);
+})->with([
+    'lapsed but still marked issued' => fn () => certExpiringInDays(-1),
+    'expired' => fn () => Certificate::factory()->expired()->create(['driver' => 'array']),
+    'failed with time left' => fn () => certExpiringInDays(60, CertificateStatus::Failed),
+    'failed issuance, no expiry' => fn () => Certificate::factory()->failed()->create(['driver' => 'array']),
+]);
+
+it('runs registry-wide without counting a deliberately revoked certificate', function (): void {
+    certExpiringInDays(40);
+    certExpiringInDays(3, CertificateStatus::Revoked);
+
+    expect((new CertificateExpiryCheck)->check()->status)->toBe(Status::Ok);
+});
