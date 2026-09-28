@@ -9,13 +9,17 @@ use Illuminate\Database\Eloquent\Model;
 final readonly class IssueCertificateData
 {
     /**
+     * The issuer and namespace are not per-certificate options: they belong to the driver's
+     * configuration (e.g. `drivers.kubernetes.issuer` / `.namespace`) — register another
+     * driver with `Certificates::extend()` for a second one. The registry row's `issuer`
+     * records what the provider reports.
+     *
      * @param  array<string, string>  $meta
      * @param  list<string>  $domains  All domains incl. primary; empty falls back to [domain].
+     * @param  int|null  $validForDays  the recorded expiry when the driver cannot report one
      */
     public function __construct(
         public string $domain,
-        public ?string $issuer = null,
-        public ?string $namespace = null,
         public ?string $driver = null,
         public ?int $validForDays = null,
         public array $meta = [],

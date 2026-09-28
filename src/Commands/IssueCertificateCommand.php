@@ -11,7 +11,7 @@ use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 
 final class IssueCertificateCommand extends Command
 {
-    protected $signature = 'certificates:issue {domain} {--driver=} {--issuer=} {--namespace=}';
+    protected $signature = 'certificates:issue {domain} {--driver=}';
 
     protected $description = 'Issue a TLS certificate for a domain';
 
@@ -25,8 +25,6 @@ final class IssueCertificateCommand extends Command
         try {
             $certificate = $action->execute(new IssueCertificateData(
                 domain: $domain,
-                issuer: $this->stringOption('issuer'),
-                namespace: $this->stringOption('namespace'),
                 driver: $this->stringOption('driver'),
             ));
         } catch (CertificateException $e) {

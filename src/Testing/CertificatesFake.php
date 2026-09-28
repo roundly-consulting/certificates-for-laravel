@@ -143,7 +143,6 @@ final class CertificatesFake extends CertificatesManager
             'domains' => count($domains) > 1 ? $domains : null,
             'driver' => $data->driver ?? 'array',
             'status' => CertificateStatus::Issued,
-            'issuer' => $data->issuer,
             'issued_at' => CarbonImmutable::now(),
             'expires_at' => CarbonImmutable::now()->addDays($data->validForDays ?? 90),
         ]);

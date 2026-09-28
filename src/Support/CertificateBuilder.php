@@ -31,10 +31,6 @@ final class CertificateBuilder
 
     private ?string $driver = null;
 
-    private ?string $issuer = null;
-
-    private ?string $namespace = null;
-
     private ?int $validForDays = null;
 
     /** @var array<string, string> */
@@ -69,20 +65,6 @@ final class CertificateBuilder
     public function using(string $driver): self
     {
         $this->driver = $driver;
-
-        return $this;
-    }
-
-    public function issuer(string $issuer): self
-    {
-        $this->issuer = $issuer;
-
-        return $this;
-    }
-
-    public function namespace(string $namespace): self
-    {
-        $this->namespace = $namespace;
 
         return $this;
     }
@@ -203,8 +185,6 @@ final class CertificateBuilder
     {
         return new IssueCertificateData(
             domain: $this->domain,
-            issuer: $this->issuer,
-            namespace: $this->namespace,
             driver: $this->driver,
             validForDays: $this->validForDays,
             meta: $this->meta,

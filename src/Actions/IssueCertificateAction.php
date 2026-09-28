@@ -58,8 +58,6 @@ final readonly class IssueCertificateAction
 
         $data = new IssueCertificateData(
             domain: $domains[0],
-            issuer: $data->issuer,
-            namespace: $data->namespace,
             driver: $data->driver,
             validForDays: $data->validForDays,
             meta: $data->meta,
@@ -148,6 +146,7 @@ final readonly class IssueCertificateAction
             // A pruned row comes back as a fresh registration, not with its dead history.
             $model->forceFill([
                 $model->getDeletedAtColumn() => null,
+                'issuer' => null,
                 'issued_at' => null,
                 'expires_at' => null,
                 'last_renewed_at' => null,
@@ -165,7 +164,6 @@ final readonly class IssueCertificateAction
             'domain' => $data->domain,
             'domains' => count($allDomains) > 1 ? $allDomains : null,
             'status' => CertificateStatus::Requested,
-            'issuer' => $data->issuer,
             'meta' => $data->meta === [] ? null : $data->meta,
         ]);
 
