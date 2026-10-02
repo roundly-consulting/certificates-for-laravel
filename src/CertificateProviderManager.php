@@ -54,8 +54,6 @@ final class CertificateProviderManager extends Manager
         /** @var array<string, mixed> $kubernetes */
         $kubernetes = $this->config->get('certificates.drivers.kubernetes', []);
 
-        $verify = $kubernetes['ca_path'] ?? true;
-
         return new KubernetesProvider(
             baseUrl: (string) ($kubernetes['base_url'] ?? ''),
             token: $this->resolveToken($kubernetes),
@@ -66,7 +64,7 @@ final class CertificateProviderManager extends Manager
             issuer: (string) ($kubernetes['issuer'] ?? 'letsencrypt'),
             issuerKind: (string) ($kubernetes['issuer_kind'] ?? 'ClusterIssuer'),
             ingressClass: (string) ($kubernetes['ingress']['class'] ?? 'nginx'),
-            verify: is_string($verify) ? $verify : (bool) $verify,
+            verify: $this->tlsVerification($kubernetes['ca_path'] ?? null),
         );
     }
 
@@ -121,14 +119,12 @@ final class CertificateProviderManager extends Manager
             autoRegister: (bool) ($accountConfig['auto_register'] ?? true),
         );
 
-        $verify = $acme['verify'] ?? true;
-
         $client = new AcmeClient(
             jws: $jws,
             account: $account,
             directoryUrl: (string) ($acme['directory'] ?? 'https://acme-v02.api.letsencrypt.org/directory'),
             contact: isset($acme['contact']) ? (string) $acme['contact'] : null,
-            verify: is_string($verify) ? $verify : (bool) $verify,
+            verify: $this->tlsVerification($acme['verify'] ?? null),
         );
 
         $store = new FilesystemCertificateStore(
@@ -145,6 +141,20 @@ final class CertificateProviderManager extends Manager
             pollAttempts: (int) ($pollConfig['attempts'] ?? 30),
             pollSeconds: (int) ($pollConfig['seconds'] ?? 2),
         );
+    }
+
+    /**
+     * The HTTP client's `verify` option from a CA-bundle setting: a path verifies against
+     * that bundle, and only an explicit false disables verification — null, empty or true
+     * verify against the system bundle, so a blank env value never turns TLS checks off.
+     */
+    private function tlsVerification(mixed $setting): string|bool
+    {
+        if ($setting === false) {
+            return false;
+        }
+
+        return is_string($setting) && $setting !== '' ? $setting : true;
     }
 
     /**

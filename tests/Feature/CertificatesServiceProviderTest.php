@@ -169,11 +169,20 @@ it('reports the kubernetes token as sourced from a file when no inline token is 
 it('reports a missing kubernetes token and an unverified api as such', function (): void {
     config()->set('certificates.drivers.kubernetes.token', null);
     config()->set('certificates.drivers.kubernetes.token_path', null);
-    config()->set('certificates.drivers.kubernetes.ca_path', null);
+    config()->set('certificates.drivers.kubernetes.ca_path', false);
 
     $this->artisan('about --only=certificates')
         ->expectsOutputToContain('MISSING')
         ->expectsOutputToContain('UNVERIFIED')
+        ->assertExitCode(0);
+});
+
+it('reports a null kubernetes ca_path as verified against the system bundle', function (): void {
+    config()->set('certificates.drivers.kubernetes.ca_path', null);
+
+    $this->artisan('about --only=certificates')
+        ->expectsOutputToContain('SYSTEM')
+        ->doesntExpectOutputToContain('UNVERIFIED')
         ->assertExitCode(0);
 });
 

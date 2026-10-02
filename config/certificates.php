@@ -177,7 +177,8 @@ return [
             ),
 
             // CA bundle path used to verify the API server's TLS certificate.
-            // Set to null to disable verification (not recommended).
+            // null (or empty) verifies against the system CA bundle instead; only
+            // false disables verification (not recommended).
             'ca_path' => env(
                 'CERTIFICATES_K8S_CA_PATH',
                 '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
@@ -243,7 +244,8 @@ return [
                 'seconds' => (int) env('CERTIFICATES_ACME_POLL_SECONDS', 2),
             ],
 
-            // CA bundle path, or false to disable TLS verification (not recommended).
+            // CA bundle path; true/null verifies against the system CA bundle, and
+            // only false disables TLS verification (not recommended).
             'verify' => env('CERTIFICATES_ACME_VERIFY', true),
         ],
 

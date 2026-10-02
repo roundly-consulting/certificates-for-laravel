@@ -151,7 +151,7 @@ The published config lives at `config/certificates.php`.
 | `drivers.kubernetes.base_url` | string | `https://kubernetes.default.svc` | `CERTIFICATES_K8S_BASE_URL` |
 | `drivers.kubernetes.token` | string\|null | `null` | `CERTIFICATES_K8S_TOKEN` |
 | `drivers.kubernetes.token_path` | string\|null | in-cluster SA token path | `CERTIFICATES_K8S_TOKEN_PATH` |
-| `drivers.kubernetes.ca_path` | string\|null | in-cluster SA CA path | `CERTIFICATES_K8S_CA_PATH` |
+| `drivers.kubernetes.ca_path` | string\|false\|null | in-cluster SA CA path | `CERTIFICATES_K8S_CA_PATH` |
 | `drivers.kubernetes.namespace` | string | `default` | `CERTIFICATES_K8S_NAMESPACE` |
 | `drivers.kubernetes.issuer` | string | `letsencrypt` | `CERTIFICATES_K8S_ISSUER` |
 | `drivers.kubernetes.issuer_kind` | string | `ClusterIssuer` | `CERTIFICATES_K8S_ISSUER_KIND` |
@@ -165,8 +165,11 @@ The published config lives at `config/certificates.php`.
 `default` selects which driver is used when none is named. The `null` driver is an inert no-op for
 local/dev; the `array` driver is an in-memory backend used by the test fake. The Kubernetes driver
 authenticates with the standard in-cluster service-account token and CA bundle by default — set
-`token` directly (or point `token_path` at a mounted file). Set `ca_path` to `null` to disable TLS
-verification (not recommended).
+`token` directly (or point `token_path` at a mounted file). `ca_path` is the CA bundle the API
+server's certificate is verified against; `null` (or empty) verifies against the system CA bundle
+instead, and only `false` (`CERTIFICATES_K8S_CA_PATH=false`) disables TLS verification — not
+recommended. `drivers.acme.verify` works the same way: a bundle path, `true`/`null` for the system
+bundle, or `false`.
 
 ## Usage
 

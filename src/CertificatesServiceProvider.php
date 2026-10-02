@@ -68,7 +68,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
                 'Alert notifiable' => self::presence('certificates.alerts.notifiable', 'OWNER'),
                 'Kubernetes API' => self::presence('certificates.drivers.kubernetes.base_url', 'MISSING'),
                 'Kubernetes token' => self::kubernetesToken(),
-                'Kubernetes CA' => self::presence('certificates.drivers.kubernetes.ca_path', 'UNVERIFIED'),
+                'Kubernetes CA' => self::kubernetesCa(),
                 'ACME directory' => self::presence('certificates.drivers.acme.directory', 'MISSING'),
                 'ACME contact' => self::presence('certificates.drivers.acme.contact', 'MISSING'),
                 'ACME account key' => self::acmeAccountKey(),
@@ -228,6 +228,19 @@ final class CertificatesServiceProvider extends PackageServiceProvider
         return self::presence('certificates.drivers.kubernetes.token_path', 'MISSING') === 'SET'
             ? 'FILE'
             : 'MISSING';
+    }
+
+    /**
+     * Mirrors the driver: a bundle path is SET, only an explicit false is UNVERIFIED, and
+     * null or empty verifies against the SYSTEM bundle.
+     */
+    private static function kubernetesCa(): string
+    {
+        if (config('certificates.drivers.kubernetes.ca_path') === false) {
+            return 'UNVERIFIED';
+        }
+
+        return self::presence('certificates.drivers.kubernetes.ca_path', 'SYSTEM');
     }
 
     /**

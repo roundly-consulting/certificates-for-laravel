@@ -88,7 +88,8 @@ it('reports the absent markers rather than blank lines when nothing is configure
             'Kubernetes API',
             'MISSING',
             'Kubernetes CA',
-            'UNVERIFIED',
+            // null is not "unverified": the API is verified against the system bundle.
+            'SYSTEM',
             'Expiry check',
             'OFF',
         ],
