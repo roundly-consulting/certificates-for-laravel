@@ -116,6 +116,7 @@ The published config lives at `config/certificates.php`.
 | `connection` | string\|null | `null` | `CERTIFICATES_DB_CONNECTION` |
 | `model` | class-string | `RoundlyConsulting\Certificates\Models\Certificate` | — |
 | `table` | string | `certificates` | — |
+| `key_type` | string | `bigint` | `CERTIFICATES_KEY_TYPE` |
 | `renewal.threshold_days` | int | `21` | `CERTIFICATES_RENEW_THRESHOLD_DAYS` |
 | `renewal.queue` | string\|null | `null` | `CERTIFICATES_RENEW_QUEUE` |
 | `name_prefix` | string | `generated-tls-` | `CERTIFICATES_NAME_PREFIX` |
@@ -163,7 +164,18 @@ The published config lives at `config/certificates.php`.
 | `drivers.array` | array | `[]` | — |
 
 `default` selects which driver is used when none is named. The `null` driver is an inert no-op for
-local/dev; the `array` driver is an in-memory backend used by the test fake. The Kubernetes driver
+local/dev; the `array` driver is an in-memory backend used by the test fake.
+
+`key_type` is the column type of the polymorphic `certifiable` owner — `bigint`, `uuid` or `ulid`
+(anything else falls back to `bigint`). The migration reads it, so set it before you migrate, and
+every model you attach certificates to must share it. It is unrelated to the ACME account key
+algorithm, `drivers.acme.account.key_type` (`EC` / `RSA`).
+
+`lock.*` configures the cache lock taken **per certificate** (`{lock.name}:{certificate name}`)
+while it is provisioned; other certificates are never blocked. While the lock is held, `issue()`
+throws `Exceptions\ProvisioningInProgressException` (the registry row is left untouched) and
+`generate()` returns `false`. `lock.locked_for_seconds` is the lock's safety expiry — keep it above
+your slowest issuance (an ACME order polls for up to `poll.attempts × poll.seconds`). The Kubernetes driver
 authenticates with the standard in-cluster service-account token and CA bundle by default — set
 `token` directly (or point `token_path` at a mounted file). `ca_path` is the CA bundle the API
 server's certificate is verified against; `null` (or empty) verifies against the system CA bundle
@@ -191,9 +203,7 @@ $certificate->daysUntilExpiry(); // int|null
 ```php
 $certificate = Certificates::for('shop.tenant.com')
     ->using('kubernetes')
-    ->issuer('letsencrypt-prod')
-    ->namespace('tenants')
-    ->validForDays(90)
+    ->validForDays(90)      // the recorded expiry only when the driver cannot report one
     ->meta(['tenant' => '7'])
     ->owner($tenant)        // attaches via the HasCertificates morph
     ->issue();
@@ -202,11 +212,30 @@ $certificate = Certificates::for('shop.tenant.com')
 The builder also exposes `->issueIfMissing()`, `->exists()`, `->status()`, `->find()`,
 `->statusReport()`, and `->fresh()` — plus the lifecycle verbs below for the domain's registry row.
 
+The issuer and namespace are **driver configuration**, not per-certificate options: the
+`kubernetes` driver always uses `drivers.kubernetes.issuer` / `issuer_kind` / `namespace`. For a
+second issuer or namespace, register another driver with `Certificates::extend()` and pick it with
+`using()`.
+
+`issue()` records what the driver reports. When the backend reports the certificate issued, the
+row is `Issued` with the reported expiry, issuer, serial and fingerprint (`validForDays`, default
+90, fills in only when the driver reports no expiry). When it reports the certificate failed,
+expired or revoked, the row is `Failed`, `CertificateFailed` fires and the exception is rethrown.
+cert-manager issues **asynchronously**, so on `kubernetes` a first `issue()` patches the Ingress
+and returns the row still `Requested` (cert-manager has not created or finished the Certificate
+yet). Run `certificates:sync` (or `Certificates::sync('kubernetes')`) to record the outcome once
+it is `Ready`.
+
+Domains are case-insensitive: `App.Example.com` and `app.example.com` are the same certificate, one
+registry row and one secret name. Re-issuing a domain whose row was pruned restores that row as a
+fresh registration.
+
 ### Renew, revoke and expire
 
 Every lifecycle verb takes a registry `Certificate` or a domain (its most recent row), flat or
 through the `for()` handle. An unknown domain, or a status that can't make the move (e.g. renewing
-a revoked certificate), throws `CertificateException`.
+a revoked certificate), throws `CertificateException` — `renewLater()` included: it checks the
+status before it queues anything.
 
 ```php
 Certificates::renew('app.example.com');                  // now, through the certificate's own driver
@@ -224,9 +253,14 @@ Certificates::sync('kubernetes');             // pull live provider state into t
 Certificates::prune(30);                      // soft-delete stale expired/failed/revoked rows → int
 ```
 
-A renewal the provider rejects moves the row to `Failed` and fires `CertificateFailed` before the
-exception is rethrown, so it raises an alert instead of sitting in `Renewing`. `revoke()` records
-the revocation in the registry; it does not contact the CA or the cluster.
+A renewal re-provisions every domain the certificate covers (a SAN certificate keeps all its
+hosts) and is proven by the provider's own report: a status that is not live, or the very same
+certificate (same fingerprint, e.g. imported material nobody replaced), is a failed renewal. A
+failed renewal moves the row to `Failed` and fires `CertificateFailed` before the exception is
+rethrown, so it raises an alert instead of sitting in `Renewing`. `Failed` is not a dead end: a
+failed row can be renewed again, and `expiring()` / `renewDue()` / `certificates:renew` keep
+retrying it while its live certificate runs out. `revoke()` records the revocation in the
+registry; it does not contact the CA or the cluster.
 
 `renewDue()` attempts every due certificate on its own: one failure never stops the rest. It
 returns a `DataTransferObjects\RenewalReport` listing each certificate's outcome — `renewed`,
@@ -329,6 +363,12 @@ The `filesystem` driver manages PEM material on a Storage disk. It is **not** a 
 material produced elsewhere (e.g. an external ACME run) and, with `self_signed` enabled, generates
 self-signed certificates for local development and tests.
 
+It never reports work it did not do. Without `self_signed`, issuing a name with no stored PEM
+throws `CertificateException` (import the material first; imported material is registered with its
+real expiry), and renewing material nobody replaced fails as "not renewed". With `self_signed`,
+every issue and renewal mints fresh material — a renewal really moves the expiry — but a PEM a real
+CA issued is never overwritten.
+
 ```php
 config(['certificates.drivers.filesystem.self_signed' => true]);
 Certificates::for('app.test')->using('filesystem')->issue();
@@ -374,6 +414,9 @@ Certificates::statusReport('app.example.com', fresh: true);  // bypass + refresh
 Certificates::for('app.example.com')->fresh()->statusReport();
 ```
 
+`issue()` and `renew()` drop that certificate's cached report, so the next `statusReport()` reads
+the new state instead of the one cached before the change.
+
 ### Multi-tenant connections
 
 Target a specific database connection per call with `on()` (returns a connection-bound clone,
@@ -413,6 +456,7 @@ Certificates::statusReport('app.example.com'); // ?CertificateStatusReport (live
 Certificates::expiring(14, 'acme');          // Collection<int, Certificate> expiring within 14 days
 Certificates::driver('null');                // resolve a specific provider instance
 Certificates::certificateName('app.example.com'); // "generated-tls-app-example-com"
+Certificates::certificateName('*.Example.com');   // "generated-tls-wildcard-example-com"
 ```
 
 ### Querying the registry
@@ -466,7 +510,7 @@ Listen to any of these (all carry the Eloquent `Models\Certificate`):
 ### Artisan commands
 
 ```bash
-php artisan certificates:issue {domain} {--driver=} {--issuer=} {--namespace=}
+php artisan certificates:issue {domain} {--driver=} {--connection=}
 php artisan certificates:list {--driver=} {--status=} {--expiring=} {--connection=}
 php artisan certificates:renew {domain?} {--threshold=} {--queue} {--connection=}
 php artisan certificates:check {--threshold=} {--alert} {--driver=} {--connection=}
@@ -474,13 +518,19 @@ php artisan certificates:prune {--days=30} {--status=} {--connection=}
 php artisan certificates:sync {--driver=} {--connection=}
 ```
 
-Every command is a thin caller of the facade. `certificates:renew` runs `Certificates::renewDue()` —
+The state-changing commands are thin callers of the facade root (`CertificatesManager`), so
+`Certificates::fake()` records them and `--connection` targets the chosen registry:
+`certificates:issue` runs `Certificates::issue()` and exits non-zero when it fails (an invalid
+domain, a provider error, or a provisioning already in progress). `certificates:renew` runs
+`Certificates::renewDue()` —
 renewing every certificate expiring within the threshold and dispatching `CertificateExpiring` for
 each — or, given a domain, `Certificates::renew()` for its most recent row. Pass `--queue` to
 dispatch `RenewCertificateJob` onto the queue named by `renewal.queue` instead of renewing inline.
 It prints every certificate's outcome and exits non-zero when any renewal (or dispatch) failed, so
 the scheduler's failure hooks fire.
-`certificates:sync` and `certificates:prune` run `Certificates::sync()` / `Certificates::prune()`.
+`certificates:sync` and `certificates:prune` run `Certificates::sync()` / `Certificates::prune()`;
+`certificates:check` scans with `Certificates::expiring()`. `certificates:list` is a read-only
+query of the registry model.
 
 ### Expiry monitoring via alerts
 
@@ -490,9 +540,9 @@ dedup/throttle, escalation, silence windows, run history, and the `/health` surf
 
 `Alerts\CertificateExpiryCheck` bands a certificate on two lead-time windows — a **warning** window
 (`alerts.thresholds.warning_days`, default 30) and a **critical** window
-(`alerts.thresholds.critical_days`, default 7). Anything inside critical, or a terminal
-certificate (expired / revoked / failed), maps to a failed check; the warning window maps to a
-warning; otherwise it is OK.
+(`alerts.thresholds.critical_days`, default 7). Anything inside critical, or a certificate that is
+down (past its expiry, `Expired`, `Revoked` or `Failed`), maps to a failed check; the warning window
+maps to a warning; otherwise it is OK.
 
 **Schedule per-certificate monitoring** with `Certificates::monitorExpiry()`, which returns the
 alerts `PendingScheduledCheck` builder so you chain frequency, flap-debounce, channels, and
@@ -529,7 +579,8 @@ an alert automatically when `alerts.enabled` is true.
 
 **Registry-wide signal.** Set `alerts.register_check` to register a single global
 `CertificateExpiryCheck` with the alerts registry — it fails when any managed certificate is inside
-the critical window. Silence expiry alerts during a planned migration with alerts'
+the critical window, already past its expiry, `Expired` or `Failed`. Revoked certificates are a
+deliberate decision (alerted once, via `CertificateRevoked`) and are not counted. Silence expiry alerts during a planned migration with alerts'
 `Health::silences()->mute('certificate_expiry', until: $until)`.
 
 #### Scheduling renewals
@@ -586,8 +637,9 @@ Certificates::assertNothingRevoked();
 `Certificates::fake()` swaps an in-memory `Testing\CertificatesFake` in for the facade **and** the
 container, so constructor-injected `CertificatesManager`s, the `for()` handle and
 `HasCertificates::requestCertificate()` are all recorded. It never touches a provider, the registry,
-the queue or the event bus; every `driver()` is an in-memory `ArrayProvider`. Unknown domains and
-illegal status moves still throw, as they do for real. `$fake->seed($certificate)` stores a
+the queue or the event bus; every `driver()` is an in-memory `ArrayProvider`. Invalid domains
+(`InvalidDomainException`), unknown domains and illegal status moves (`renewLater()` included) still
+throw, as they do for real. `$fake->seed($certificate)` stores a
 certificate without recording an issuance, and `$fake->failRenewalOf($domain, …)` makes those
 renewals fail (the row turns `Failed`, `renew()` throws, `renewDue()` reports it under `failed`
 and carries on) so you can test how your code handles a `RenewalReport` with failures.
