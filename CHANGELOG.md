@@ -50,6 +50,19 @@ Initial public release.
   `CertificateExpiring` for it. For the due set it prints each certificate's outcome and exits
   non-zero when any failed.
 - Expiry monitoring schedules through alerts' `Health::for($notifiable)->monitor()`.
+- The builder's `issuer()` / `namespace()`, `IssueCertificateData::$issuer` / `$namespace` and
+  `certificates:issue --issuer` / `--namespace` are gone: no provider could honour them. The issuer
+  and namespace are driver configuration (`drivers.kubernetes.*`).
+- `drivers.acme.challenge_type` (`CERTIFICATES_ACME_CHALLENGE`) is gone: the configured solver's
+  `type()` picks the challenge, so a `DnsChallengeSolver` in `drivers.acme.solver` answers dns-01.
+- `certificates:issue` runs through `CertificatesManager` (so `Certificates::fake()` records it)
+  and accepts `--connection`.
+- `Failed` is no longer terminal: a failed row can be renewed again, and `expiring()` /
+  `renewDue()` include it while its live certificate runs out.
+- Certificate names are lowercase DNS-1123 names (`*.` becomes `wildcard-`, at most 253
+  characters), and domains are matched case-insensitively.
+- The provisioning lock is per certificate. While it is held, `issue()` throws
+  `ProvisioningInProgressException` and `generate()` returns `false`.
 
 ### Fixed
 
@@ -62,3 +75,19 @@ Initial public release.
 - `Certificates::renewDue()` and `certificates:renew` stopped at the first certificate that failed
   to renew (or to queue), silently skipping every later due certificate in that run. Each due
   certificate is now attempted independently.
+- A first issuance on `kubernetes` crashed on the not-yet-created cert-manager Certificate (HTTP
+  404) and left the row `Requested` with no event. It now stays `Requested` until
+  `certificates:sync` records the outcome, and a real failure is `Failed` + `CertificateFailed`.
+- `issue()` marked a row `Issued` with an invented expiry whatever the provider reported. It now
+  records the reported status, expiry, issuer, serial and fingerprint.
+- One global lock silently dropped the issuance of every other domain while any issuance ran.
+- A renewal re-provisioned only the primary domain, dropping a certificate's SANs.
+- Re-issuing a domain after `prune()` hit the unique index; the pruned row is now restored.
+- The registry-wide expiry check reported OK while certificates were expired or failed.
+- `certificates:sync` marked certificates cert-manager was still issuing as `Failed`.
+- The `filesystem` driver reported issuance without material and renewals that changed nothing.
+- `statusReport()` served the report cached before an issue or renewal.
+- `renewLater()` queued a renewal for a certificate that cannot renew, and the fake accepted invalid
+  domains.
+- An empty `ca_path` / `verify` reached the HTTP client as an empty CA path. Only `false` disables
+  TLS verification; `null` or empty uses the system bundle.
