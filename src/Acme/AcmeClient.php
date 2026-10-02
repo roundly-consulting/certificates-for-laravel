@@ -30,7 +30,6 @@ final class AcmeClient
         private readonly string $directoryUrl,
         private readonly ?string $contact = null,
         private readonly string|bool $verify = true,
-        private readonly string $challengeType = 'http-01',
     ) {}
 
     /**
@@ -120,9 +119,10 @@ final class AcmeClient
     }
 
     /**
-     * Build the AcmeChallenge for a single authorization URL.
+     * Build the AcmeChallenge of `$type` (the solver's own type(), e.g. "http-01" or
+     * "dns-01") for a single authorization URL.
      */
-    public function challengeFor(string $authorizationUrl): AcmeChallenge
+    public function challengeFor(string $authorizationUrl, string $type): AcmeChallenge
     {
         $response = $this->signedRequest($authorizationUrl, '');
 
@@ -139,11 +139,11 @@ final class AcmeClient
         $challenges = $body['challenges'] ?? [];
 
         foreach ($challenges as $challenge) {
-            if (($challenge['type'] ?? null) === $this->challengeType) {
+            if (($challenge['type'] ?? null) === $type) {
                 $token = (string) ($challenge['token'] ?? '');
 
                 return new AcmeChallenge(
-                    type: $this->challengeType,
+                    type: $type,
                     domain: $domain,
                     token: $token,
                     keyAuthorization: $token.'.'.$this->account->thumbprint(),
@@ -153,7 +153,10 @@ final class AcmeClient
             }
         }
 
-        throw AcmeException::challengeFailed($domain, 'no '.$this->challengeType.' challenge offered');
+        // CAs offer wildcards dns-01 only (RFC 8555 §7.1.3), so say what to change.
+        throw AcmeException::challengeFailed($domain, ($body['wildcard'] ?? false) === true
+            ? "no {$type} challenge offered — wildcard certificates validate over dns-01 only; register a DnsChallengeSolver via certificates.drivers.acme.solver"
+            : "no {$type} challenge offered");
     }
 
     public function respondToChallenge(AcmeChallenge $challenge): void

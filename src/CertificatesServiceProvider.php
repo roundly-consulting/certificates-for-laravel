@@ -8,6 +8,7 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Alerts\Facades\Health;
 use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
+use RoundlyConsulting\Certificates\ChallengeSolvers\DnsChallengeSolver;
 use RoundlyConsulting\Certificates\ChallengeSolvers\HttpChallengeSolver;
 use RoundlyConsulting\Certificates\Commands\CheckCertificatesCommand;
 use RoundlyConsulting\Certificates\Commands\IssueCertificateCommand;
@@ -245,11 +246,25 @@ final class CertificatesServiceProvider extends PackageServiceProvider
         );
     }
 
+    /**
+     * The challenge answered is the solver's own type(). A custom solver is not
+     * instantiated just to render `about` (and its class name is never printed): a
+     * subclass of a shipped base reports that base's type, anything else "SOLVER-DEFINED".
+     */
     private static function acmeChallenge(): string
     {
-        $type = config('certificates.drivers.acme.challenge_type');
-        $solver = self::presence('certificates.drivers.acme.solver', 'DEFAULT') === 'SET' ? 'CUSTOM' : 'DEFAULT';
+        $solver = config('certificates.drivers.acme.solver');
 
-        return sprintf('%s (solver %s)', is_string($type) && $type !== '' ? $type : 'http-01', $solver);
+        if (! is_string($solver) || $solver === '') {
+            return 'http-01 (solver DEFAULT)';
+        }
+
+        $type = match (true) {
+            is_a($solver, DnsChallengeSolver::class, true) => 'dns-01',
+            is_a($solver, HttpChallengeSolver::class, true) => 'http-01',
+            default => 'SOLVER-DEFINED',
+        };
+
+        return $type.' (solver CUSTOM)';
     }
 }

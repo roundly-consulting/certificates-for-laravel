@@ -221,10 +221,9 @@ return [
                 'auto_register' => (bool) env('CERTIFICATES_ACME_AUTO_REGISTER', true),
             ],
 
-            // "http-01" (shipped) or "dns-01" (provide your own solver).
-            'challenge_type' => env('CERTIFICATES_ACME_CHALLENGE', 'http-01'),
-
-            // Custom AcmeChallengeSolver FQCN; null uses the HTTP-01 solver.
+            // Custom AcmeChallengeSolver FQCN; null uses the shipped HTTP-01 solver.
+            // The solver's type() picks the challenge answered — register a
+            // DnsChallengeSolver subclass for dns-01 (required for wildcards).
             'solver' => env('CERTIFICATES_ACME_SOLVER'),
 
             'http' => [

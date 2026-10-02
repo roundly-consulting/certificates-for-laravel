@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use RoundlyConsulting\Certificates\Acme\AcmeAccount;
@@ -9,11 +10,13 @@ use RoundlyConsulting\Certificates\Acme\AcmeClient;
 use RoundlyConsulting\Certificates\Acme\Csr;
 use RoundlyConsulting\Certificates\Acme\Jws;
 use RoundlyConsulting\Certificates\ChallengeSolvers\HttpChallengeSolver;
+use RoundlyConsulting\Certificates\Contracts\AcmeChallengeSolver;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Exceptions\AcmeException;
 use RoundlyConsulting\Certificates\Providers\AcmeProvider;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
+use RoundlyConsulting\Certificates\Tests\Fixtures\RecordingDnsSolver;
 use RoundlyConsulting\Crypto\Codec\Base64Url;
 use RoundlyConsulting\Crypto\Hash\Digest;
 use RoundlyConsulting\Crypto\Signature\Es;
@@ -27,7 +30,7 @@ beforeEach(function (): void {
     Storage::fake('local');
 });
 
-function makeProvider(string $keyType = 'EC'): AcmeProvider
+function makeProvider(string $keyType = 'EC', ?AcmeChallengeSolver $solver = null): AcmeProvider
 {
     $jws = new Jws;
     $account = new AcmeAccount(disk: 'local', keyPath: 'acme/account.pem', keyType: $keyType);
@@ -38,14 +41,13 @@ function makeProvider(string $keyType = 'EC'): AcmeProvider
         directoryUrl: DIR,
         contact: 'ops@app.com',
         verify: true,
-        challengeType: 'http-01',
     );
 
     return new AcmeProvider(
         client: $client,
         csr: new Csr,
         store: new FilesystemCertificateStore(disk: 'local', path: 'certificates'),
-        solver: new HttpChallengeSolver(disk: 'local', path: 'acme-challenge'),
+        solver: $solver ?? new HttpChallengeSolver(disk: 'local', path: 'acme-challenge'),
         parser: new CertificateMapper,
         pollAttempts: 3,
         pollSeconds: 0,
@@ -54,23 +56,31 @@ function makeProvider(string $keyType = 'EC'): AcmeProvider
 
 /**
  * @param  array<int, mixed>  $authStatuses
+ * @param  list<string>  $challengeTypes  the challenges the CA offers (a wildcard: dns-01 only)
  */
-function fakeAcme(string $certPem, array $authStatuses = ['valid'], string $orderStatus = 'valid'): void
+function fakeAcme(string $certPem, array $authStatuses = ['valid'], string $orderStatus = 'valid', array $challengeTypes = ['http-01'], bool $wildcard = false): void
 {
     $headers = ['Replay-Nonce' => 'nonce-'.uniqid()];
+
+    $challenges = array_map(
+        static fn (string $type): array => ['type' => $type, 'token' => 'tok123', 'url' => $type === 'http-01' ? 'https://acme.test/chall/1' : "https://acme.test/chall/{$type}"],
+        $challengeTypes,
+    );
 
     // The first authz read serves the challenge; the rest drive the poll loop.
     $authResponses = [Http::response([
         'status' => 'pending',
         'identifier' => ['type' => 'dns', 'value' => 'app.com'],
-        'challenges' => [['type' => 'http-01', 'token' => 'tok123', 'url' => 'https://acme.test/chall/1']],
+        'wildcard' => $wildcard,
+        'challenges' => $challenges,
     ], 200, $headers)];
 
     foreach ($authStatuses as $status) {
         $authResponses[] = Http::response([
             'status' => $status,
             'identifier' => ['type' => 'dns', 'value' => 'app.com'],
-            'challenges' => [['type' => 'http-01', 'token' => 'tok123', 'url' => 'https://acme.test/chall/1']],
+            'wildcard' => $wildcard,
+            'challenges' => $challenges,
         ], 200, $headers);
     }
 
@@ -89,7 +99,7 @@ function fakeAcme(string $certPem, array $authStatuses = ['valid'], string $orde
             'finalize' => 'https://acme.test/finalize/1',
         ], 201, $headers + ['Location' => 'https://acme.test/order/1']),
         'https://acme.test/authz/1' => Http::sequence($authResponses),
-        'https://acme.test/chall/1' => Http::response(['status' => 'pending'], 200, $headers),
+        'https://acme.test/chall/*' => Http::response(['status' => 'pending'], 200, $headers),
         'https://acme.test/finalize/1' => Http::response([
             'status' => $orderStatus,
             'identifiers' => [['type' => 'dns', 'value' => 'app.com']],
@@ -422,4 +432,30 @@ it('retries once on a badNonce error', function (): void {
     $provider->generate('generated-tls-app-com', 'app.com');
 
     expect($provider->exists('generated-tls-app-com', 'app.com'))->toBeTrue();
+});
+
+/**
+ * Regression: the solver's type() was never consulted — the challenge picked was the
+ * separate `drivers.acme.challenge_type` (http-01 by default) — so registering a DNS-01
+ * solver via `drivers.acme.solver`, as the README says, handed it an http-01 challenge and
+ * validation failed. The solver now decides which challenge is answered.
+ */
+it('answers the challenge type its solver solves', function (): void {
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem(), challengeTypes: ['http-01', 'dns-01']);
+
+    $solver = new RecordingDnsSolver;
+
+    makeProvider(solver: $solver)->generate('generated-tls-app-com', 'app.com');
+
+    expect($solver->published)->toBe(['_acme-challenge.app.com'])
+        ->and($solver->removed)->toBe(['_acme-challenge.app.com']);
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://acme.test/chall/dns-01');
+    Http::assertNotSent(fn (Request $request): bool => $request->url() === 'https://acme.test/chall/1');
+});
+
+it('explains that a wildcard needs a dns-01 solver', function (): void {
+    fakeAcme(selfSignedCertificate(['app.com'])->leaf()->pem(), challengeTypes: ['dns-01'], wildcard: true);
+
+    expect(fn () => makeProvider()->generate('generated-tls-wildcard-app-com', '*.app.com'))
+        ->toThrow(AcmeException::class, 'wildcard certificates validate over dns-01 only');
 });

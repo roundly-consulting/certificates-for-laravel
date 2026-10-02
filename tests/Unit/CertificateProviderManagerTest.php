@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 use RoundlyConsulting\Certificates\Acme\Csr;
 use RoundlyConsulting\Certificates\CertificateProviderManager;
-use RoundlyConsulting\Certificates\ChallengeSolvers\DnsChallengeSolver;
-use RoundlyConsulting\Certificates\Contracts\AcmeChallengeSolver;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
 use RoundlyConsulting\Certificates\Exceptions\UnknownProviderException;
 use RoundlyConsulting\Certificates\Providers\AcmeProvider;
@@ -13,6 +11,7 @@ use RoundlyConsulting\Certificates\Providers\ArrayProvider;
 use RoundlyConsulting\Certificates\Providers\KubernetesProvider;
 use RoundlyConsulting\Certificates\Providers\LocalFilesystemProvider;
 use RoundlyConsulting\Certificates\Providers\NullProvider;
+use RoundlyConsulting\Certificates\Tests\Fixtures\RecordingDnsSolver;
 
 function manager(): CertificateProviderManager
 {
@@ -53,8 +52,13 @@ it('honours a custom acme solver FQCN', function (): void {
 
     app()->forgetInstance(CertificateProviderManager::class);
 
-    // The provider builds without error and uses the configured solver.
-    expect(manager()->provider('acme'))->toBeInstanceOf(AcmeProvider::class);
+    $provider = manager()->provider('acme');
+    $solver = (new ReflectionProperty(AcmeProvider::class, 'solver'))->getValue($provider);
+
+    // The configured solver alone decides the challenge: no separate challenge-type key.
+    expect($provider)->toBeInstanceOf(AcmeProvider::class)
+        ->and($solver)->toBeInstanceOf(RecordingDnsSolver::class)
+        ->and($solver->type())->toBe('dns-01');
 });
 
 it('builds a CSR via the package Csr helper', function (): void {
@@ -63,10 +67,3 @@ it('builds a CSR via the package Csr helper', function (): void {
 
     expect($der)->not->toBeEmpty();
 });
-
-final class RecordingDnsSolver extends DnsChallengeSolver implements AcmeChallengeSolver
-{
-    protected function publishRecord(string $name, string $value): void {}
-
-    protected function removeRecord(string $name, string $value): void {}
-}

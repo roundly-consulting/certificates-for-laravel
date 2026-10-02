@@ -78,7 +78,8 @@ final class AcmeProvider implements CertificateProvider, ProvisionsMultipleDomai
         $order = $this->client->newOrder($domains);
 
         foreach ($order->authorizationUrls as $authorizationUrl) {
-            $challenge = $this->client->challengeFor($authorizationUrl);
+            // The solver decides which challenge is answered: a DNS solver gets dns-01.
+            $challenge = $this->client->challengeFor($authorizationUrl, $this->solver->type());
 
             try {
                 $this->solver->solve($challenge);

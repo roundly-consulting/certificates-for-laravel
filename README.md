@@ -136,7 +136,6 @@ The published config lives at `config/certificates.php`.
 | `drivers.acme.account.disk` | string | `local` | `CERTIFICATES_ACME_ACCOUNT_DISK` |
 | `drivers.acme.account.key_path` | string | `acme/account.pem` | `CERTIFICATES_ACME_ACCOUNT_KEY` |
 | `drivers.acme.account.auto_register` | bool | `true` | `CERTIFICATES_ACME_AUTO_REGISTER` |
-| `drivers.acme.challenge_type` | string | `http-01` | `CERTIFICATES_ACME_CHALLENGE` |
 | `drivers.acme.solver` | string\|null | `null` | `CERTIFICATES_ACME_SOLVER` |
 | `drivers.acme.http.disk` | string | `local` | `CERTIFICATES_ACME_HTTP_DISK` |
 | `drivers.acme.http.path` | string | `acme-challenge` | `CERTIFICATES_ACME_HTTP_PATH` |
@@ -300,8 +299,9 @@ and a replaced account key re-registers rather than signing under its predecesso
 Re-registering an already-known key is safe — the CA answers with the existing account.
 
 **DNS-01** is a documented extension point. Extend `ChallengeSolvers\DnsChallengeSolver`, implement
-`publishRecord()` / `removeRecord()` against your DNS provider, and register it via
-`drivers.acme.solver`:
+`publishRecord()` / `removeRecord()` against your DNS provider, and register its class name via
+`drivers.acme.solver` (`CERTIFICATES_ACME_SOLVER`). It is resolved from the container, so it can
+take constructor dependencies:
 
 ```php
 use RoundlyConsulting\Certificates\ChallengeSolvers\DnsChallengeSolver;
@@ -311,7 +311,14 @@ final class Route53Solver extends DnsChallengeSolver
     protected function publishRecord(string $name, string $value): void { /* upsert TXT */ }
     protected function removeRecord(string $name, string $value): void { /* delete TXT */ }
 }
+
+// config/certificates.php → 'drivers' => ['acme' => ['solver' => Route53Solver::class, …]]
 ```
+
+That one key is all it takes: the solver's own `type()` picks the challenge answered (`dns-01` for a
+`DnsChallengeSolver`, `http-01` for the shipped default), so there is no separate challenge-type
+setting to keep in step. `$name` is the `_acme-challenge.{domain}` TXT record name and `$value` its
+content.
 
 ### Filesystem provider
 
@@ -327,9 +334,13 @@ Certificates::for('app.test')->using('filesystem')->issue();
 ### Multi-domain (SAN) and wildcard certificates
 
 Issue one certificate covering several domains by passing an array to `for()`, or appending SANs
-fluently with `alsoFor()`. Wildcards are supported:
+fluently with `alsoFor()`. Wildcards are supported, but on the `acme` driver only over **DNS-01**:
+CAs (Let's Encrypt included) never offer HTTP-01 for a `*.` name, so register a DNS-01 solver first
+(see [ACME / Let's Encrypt](#acme--lets-encrypt)). With the default HTTP-01 solver a wildcard order
+fails with an `AcmeException` that says so.
 
 ```php
+// requires a DnsChallengeSolver in drivers.acme.solver
 Certificates::for(['app.example.com', '*.app.example.com'])->using('acme')->issue();
 
 Certificates::for('example.com')

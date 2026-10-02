@@ -12,6 +12,7 @@ use RoundlyConsulting\Certificates\Commands\PruneCertificatesCommand;
 use RoundlyConsulting\Certificates\Commands\RenewCertificatesCommand;
 use RoundlyConsulting\Certificates\Commands\SyncCertificatesCommand;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Tests\Fixtures\RecordingDnsSolver;
 
 it('merges the package config', function (): void {
     expect(config('certificates.model'))->toBe(Certificate::class)
@@ -135,7 +136,24 @@ it('reports the acme account key type and challenge shape without the key path',
 
     $this->artisan('about --only=certificates')
         ->expectsOutputToContain('RSA (auto-register OFF)')
-        ->expectsOutputToContain('http-01 (solver CUSTOM)')
+        ->expectsOutputToContain('SOLVER-DEFINED (solver CUSTOM)')
+        ->assertExitCode(0);
+});
+
+it('reports the challenge a custom solver answers from its shipped base class', function (): void {
+    config()->set('certificates.drivers.acme.solver', RecordingDnsSolver::class);
+
+    $this->artisan('about --only=certificates')
+        ->expectsOutputToContain('dns-01 (solver CUSTOM)')
+        ->doesntExpectOutputToContain('RecordingDnsSolver')
+        ->assertExitCode(0);
+});
+
+it('reports the shipped http-01 solver when none is configured', function (): void {
+    config()->set('certificates.drivers.acme.solver', null);
+
+    $this->artisan('about --only=certificates')
+        ->expectsOutputToContain('http-01 (solver DEFAULT)')
         ->assertExitCode(0);
 });
 

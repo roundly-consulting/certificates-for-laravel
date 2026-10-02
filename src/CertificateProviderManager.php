@@ -129,7 +129,6 @@ final class CertificateProviderManager extends Manager
             directoryUrl: (string) ($acme['directory'] ?? 'https://acme-v02.api.letsencrypt.org/directory'),
             contact: isset($acme['contact']) ? (string) $acme['contact'] : null,
             verify: is_string($verify) ? $verify : (bool) $verify,
-            challengeType: (string) ($acme['challenge_type'] ?? 'http-01'),
         );
 
         $store = new FilesystemCertificateStore(
