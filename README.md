@@ -163,6 +163,10 @@ The published config lives at `config/certificates.php`.
 | `drivers.null` | array | `[]` | — |
 | `drivers.array` | array | `[]` | — |
 
+Every `bool` switch accepts the usual env spellings — `true`/`false`, `1`/`0`, `on`/`off`,
+`yes`/`no` — so `CERTIFICATES_ALERTS=1` turns alerts on and `CERTIFICATES_STATUS_CACHE=off` turns
+the cache off; anything unrecognised falls back to the default.
+
 `default` selects which driver is used when none is named. The `null` driver is an inert no-op for
 local/dev; the `array` driver is an in-memory backend used by the test fake.
 
@@ -179,9 +183,9 @@ your slowest issuance (an ACME order polls for up to `poll.attempts × poll.seco
 authenticates with the standard in-cluster service-account token and CA bundle by default — set
 `token` directly (or point `token_path` at a mounted file). `ca_path` is the CA bundle the API
 server's certificate is verified against; `null` (or empty) verifies against the system CA bundle
-instead, and only `false` (`CERTIFICATES_K8S_CA_PATH=false`) disables TLS verification — not
-recommended. `drivers.acme.verify` works the same way: a bundle path, `true`/`null` for the system
-bundle, or `false`.
+instead, and only a false value (`CERTIFICATES_K8S_CA_PATH=false`, or `0`/`off`/`no`) disables
+TLS verification — not recommended. `drivers.acme.verify` works the same way: a bundle path,
+`true`/`null` (or `1`/`on`/`yes`) for the system bundle, or `false`.
 
 ## Usage
 

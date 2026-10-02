@@ -91,3 +91,6 @@ Initial public release.
   domains.
 - An empty `ca_path` / `verify` reached the HTTP client as an empty CA path. Only `false` disables
   TLS verification; `null` or empty uses the system bundle.
+- Boolean switches set from `.env` as `1`/`0`/`on`/`off`/`yes`/`no` were misread: `1` left alerts
+  off and `off` left the status cache on. They are now parsed as booleans, and a boolean word in
+  `ca_path` / `verify` is read as the switch, not a CA bundle path.

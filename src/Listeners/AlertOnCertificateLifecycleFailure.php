@@ -11,6 +11,7 @@ use RoundlyConsulting\Certificates\Alerts\ExpiryNotifiableResolver;
 use RoundlyConsulting\Certificates\Events\CertificateExpired;
 use RoundlyConsulting\Certificates\Events\CertificateFailed;
 use RoundlyConsulting\Certificates\Events\CertificateRevoked;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Routes certificate lifecycle failures (failed / revoked / expired) through the
@@ -25,7 +26,7 @@ final class AlertOnCertificateLifecycleFailure
 
     public function handle(CertificateFailed|CertificateRevoked|CertificateExpired $event): void
     {
-        if (config('certificates.alerts.enabled', false) !== true) {
+        if (! Config::boolean('certificates.alerts.enabled')) {
             return;
         }
 

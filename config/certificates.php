@@ -118,7 +118,7 @@ return [
     |
     */
     'status_cache' => [
-        'enabled' => (bool) env('CERTIFICATES_STATUS_CACHE', true),
+        'enabled' => env('CERTIFICATES_STATUS_CACHE', true),
         'store' => env('CERTIFICATES_STATUS_CACHE_STORE'),
         'ttl' => (int) env('CERTIFICATES_STATUS_CACHE_TTL', 300),
     ],
@@ -141,14 +141,14 @@ return [
     |
     */
     'alerts' => [
-        'enabled' => (bool) env('CERTIFICATES_ALERTS', false),
+        'enabled' => env('CERTIFICATES_ALERTS', false),
         'notifiable' => env('CERTIFICATES_ALERTS_NOTIFIABLE'),
         'thresholds' => [
             'warning_days' => (int) env('CERTIFICATES_ALERTS_WARNING_DAYS', 30),
             'critical_days' => (int) env('CERTIFICATES_ALERTS_CRITICAL_DAYS', 7),
         ],
         'channels' => ['mail'],
-        'register_check' => (bool) env('CERTIFICATES_ALERTS_REGISTER_CHECK', false),
+        'register_check' => env('CERTIFICATES_ALERTS_REGISTER_CHECK', false),
     ],
 
     /*
@@ -219,7 +219,7 @@ return [
                 'key_type' => env('CERTIFICATES_ACME_KEY_TYPE', 'EC'),
                 'disk' => env('CERTIFICATES_ACME_ACCOUNT_DISK', 'local'),
                 'key_path' => env('CERTIFICATES_ACME_ACCOUNT_KEY', 'acme/account.pem'),
-                'auto_register' => (bool) env('CERTIFICATES_ACME_AUTO_REGISTER', true),
+                'auto_register' => env('CERTIFICATES_ACME_AUTO_REGISTER', true),
             ],
 
             // Custom AcmeChallengeSolver FQCN; null uses the shipped HTTP-01 solver.
@@ -255,7 +255,7 @@ return [
         'filesystem' => [
             'disk' => env('CERTIFICATES_FS_DISK', 'local'),
             'path' => env('CERTIFICATES_FS_PATH', 'certificates'),
-            'self_signed' => (bool) env('CERTIFICATES_FS_SELF_SIGNED', false),
+            'self_signed' => env('CERTIFICATES_FS_SELF_SIGNED', false),
             'self_signed_days' => (int) env('CERTIFICATES_FS_SELF_SIGNED_DAYS', 90),
         ],
 

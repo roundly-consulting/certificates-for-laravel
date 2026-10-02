@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
 use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Caches provider status() lookups so repeated checks don't hit the backend
@@ -57,7 +58,7 @@ final class CachedStatusResolver
 
     private function enabled(): bool
     {
-        return (bool) config('certificates.status_cache.enabled', true);
+        return Config::boolean('certificates.status_cache.enabled', true);
     }
 
     private function ttl(): int

@@ -27,9 +27,11 @@ use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\Support\TlsVerification;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final class CertificatesServiceProvider extends PackageServiceProvider
 {
@@ -64,7 +66,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
                 'Renewal queue' => self::presence('certificates.renewal.queue', 'DEFAULT'),
                 'Status cache' => self::statusCache(),
                 'Alerts' => self::alerts(),
-                'Expiry check' => config('certificates.alerts.register_check') === true ? 'REGISTERED' : 'OFF',
+                'Expiry check' => Config::boolean('certificates.alerts.register_check') ? 'REGISTERED' : 'OFF',
                 'Alert notifiable' => self::presence('certificates.alerts.notifiable', 'OWNER'),
                 'Kubernetes API' => self::presence('certificates.drivers.kubernetes.base_url', 'MISSING'),
                 'Kubernetes token' => self::kubernetesToken(),
@@ -144,7 +146,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
             AlertOnCertificateLifecycleFailure::class,
         );
 
-        if (config('certificates.alerts.register_check', false) === true) {
+        if (Config::boolean('certificates.alerts.register_check')) {
             // `via()` is not optional polish: without it the check carries the alerts
             // Check base's own null default, and `certificates.alerts.channels` — a
             // shipped, documented key — reaches nothing. A host configuring `['slack']`
@@ -189,7 +191,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
 
     private static function statusCache(): string
     {
-        if (config('certificates.status_cache.enabled') !== true) {
+        if (! Config::boolean('certificates.status_cache.enabled', true)) {
             return 'OFF';
         }
 
@@ -201,7 +203,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
 
     private static function alerts(): string
     {
-        if (config('certificates.alerts.enabled') !== true) {
+        if (! Config::boolean('certificates.alerts.enabled')) {
             return 'OFF';
         }
 
@@ -231,16 +233,17 @@ final class CertificatesServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * Mirrors the driver: a bundle path is SET, only an explicit false is UNVERIFIED, and
-     * null or empty verifies against the SYSTEM bundle.
+     * Mirrors the driver (both read through TlsVerification): a bundle path is SET, only a
+     * false-ish value (false, "0", "off", "no") is UNVERIFIED, and null, empty or a
+     * true-ish value verifies against the SYSTEM bundle.
      */
     private static function kubernetesCa(): string
     {
-        if (config('certificates.drivers.kubernetes.ca_path') === false) {
-            return 'UNVERIFIED';
-        }
-
-        return self::presence('certificates.drivers.kubernetes.ca_path', 'SYSTEM');
+        return match (TlsVerification::from(config('certificates.drivers.kubernetes.ca_path'))) {
+            false => 'UNVERIFIED',
+            true => 'SYSTEM',
+            default => 'SET',
+        };
     }
 
     /**
@@ -250,7 +253,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
     private static function acmeAccountKey(): string
     {
         $type = config('certificates.drivers.acme.account.key_type');
-        $autoRegister = config('certificates.drivers.acme.account.auto_register') === true;
+        $autoRegister = Config::boolean('certificates.drivers.acme.account.auto_register', true);
 
         return sprintf(
             '%s (auto-register %s)',

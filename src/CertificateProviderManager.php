@@ -21,6 +21,8 @@ use RoundlyConsulting\Certificates\Providers\LocalFilesystemProvider;
 use RoundlyConsulting\Certificates\Providers\NullProvider;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
+use RoundlyConsulting\Certificates\Support\TlsVerification;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * The driver manager behind `Certificates::driver()` / `Certificates::extend()`: it
@@ -64,7 +66,7 @@ final class CertificateProviderManager extends Manager
             issuer: (string) ($kubernetes['issuer'] ?? 'letsencrypt'),
             issuerKind: (string) ($kubernetes['issuer_kind'] ?? 'ClusterIssuer'),
             ingressClass: (string) ($kubernetes['ingress']['class'] ?? 'nginx'),
-            verify: $this->tlsVerification($kubernetes['ca_path'] ?? null),
+            verify: TlsVerification::from($kubernetes['ca_path'] ?? null),
         );
     }
 
@@ -88,7 +90,7 @@ final class CertificateProviderManager extends Manager
             path: (string) ($filesystem['path'] ?? 'certificates'),
         );
 
-        $selfSigned = (bool) ($filesystem['self_signed'] ?? false);
+        $selfSigned = Config::boolean('certificates.drivers.filesystem.self_signed');
 
         return new LocalFilesystemProvider(
             store: $store,
@@ -116,7 +118,7 @@ final class CertificateProviderManager extends Manager
             disk: (string) ($accountConfig['disk'] ?? 'local'),
             keyPath: (string) ($accountConfig['key_path'] ?? 'acme/account.pem'),
             keyType: (string) ($accountConfig['key_type'] ?? 'EC'),
-            autoRegister: (bool) ($accountConfig['auto_register'] ?? true),
+            autoRegister: Config::boolean('certificates.drivers.acme.account.auto_register', true),
         );
 
         $client = new AcmeClient(
@@ -124,7 +126,7 @@ final class CertificateProviderManager extends Manager
             account: $account,
             directoryUrl: (string) ($acme['directory'] ?? 'https://acme-v02.api.letsencrypt.org/directory'),
             contact: isset($acme['contact']) ? (string) $acme['contact'] : null,
-            verify: $this->tlsVerification($acme['verify'] ?? null),
+            verify: TlsVerification::from($acme['verify'] ?? null),
         );
 
         $store = new FilesystemCertificateStore(
@@ -141,20 +143,6 @@ final class CertificateProviderManager extends Manager
             pollAttempts: (int) ($pollConfig['attempts'] ?? 30),
             pollSeconds: (int) ($pollConfig['seconds'] ?? 2),
         );
-    }
-
-    /**
-     * The HTTP client's `verify` option from a CA-bundle setting: a path verifies against
-     * that bundle, and only an explicit false disables verification — null, empty or true
-     * verify against the system bundle, so a blank env value never turns TLS checks off.
-     */
-    private function tlsVerification(mixed $setting): string|bool
-    {
-        if ($setting === false) {
-            return false;
-        }
-
-        return is_string($setting) && $setting !== '' ? $setting : true;
     }
 
     /**

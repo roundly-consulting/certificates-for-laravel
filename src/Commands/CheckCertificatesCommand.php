@@ -13,6 +13,7 @@ use RoundlyConsulting\Certificates\Alerts\ExpiryNotifiableResolver;
 use RoundlyConsulting\Certificates\CertificatesManager;
 use RoundlyConsulting\Certificates\Events\CertificateExpiring as CertificateExpiringEvent;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Read-only monitoring: scans the registry for certificates nearing expiry,
@@ -72,7 +73,7 @@ final class CheckCertificatesCommand extends Command
 
     private function alerting(): bool
     {
-        return (bool) $this->option('alert') || config('certificates.alerts.enabled', false) === true;
+        return (bool) $this->option('alert') || Config::boolean('certificates.alerts.enabled');
     }
 
     private function raiseAlert(Certificate $certificate, ExpiryNotifiableResolver $resolver): void
