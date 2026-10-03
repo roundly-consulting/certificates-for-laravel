@@ -168,6 +168,22 @@ Every `bool` switch accepts the usual env spellings — `true`/`false`, `1`/`0`,
 the cache off. Unset or `null` reads as the default; anything else (a typo such as `disabled`) throws
 `InvalidConfigurationException` naming the key instead of quietly reading as the default.
 
+Every other value is read just as strictly. Unset or `null` reads as the default; a present value
+of the wrong shape throws `InvalidConfigurationException` naming the key:
+
+- integers take an int or a canonical integer string (env values arrive as strings), so
+  `CERTIFICATES_RENEW_THRESHOLD_DAYS=five`, `'1.5'` or a value out of range throws — never a silent
+  `0`. Bounds: `renewal.threshold_days`, `lock.locked_for_seconds`, `status_cache.ttl`,
+  `drivers.acme.poll.*` and `drivers.filesystem.self_signed_days` ≥ 1; `alerts.thresholds.*` ≥ 0;
+  `drivers.kubernetes.service.port` 1–65535;
+- string settings (`default`, `table`, `lock.name`, disks, paths, namespace, issuer, …) must be
+  non-blank strings; the optional ones (`connection`, queues, stores, tokens, `contact`, `solver`,
+  `notifiable`) must be strings when set, and a blank value reads as unset. `name_prefix` may be
+  `''`;
+- `drivers.acme.account.key_type` is `EC` or `RSA`; `alerts.channels` is a list of channel names;
+  `alerts.notifiable` must resolve to an Eloquent model and `drivers.acme.solver` to an
+  `AcmeChallengeSolver`.
+
 `default` selects which driver is used when none is named. The `null` driver is an inert no-op for
 local/dev; the `array` driver is an in-memory backend used by the test fake.
 
@@ -186,7 +202,9 @@ authenticates with the standard in-cluster service-account token and CA bundle b
 server's certificate is verified against; `null` (or empty) verifies against the system CA bundle
 instead, and only a false value (`CERTIFICATES_K8S_CA_PATH=false`, or `0`/`off`/`no`) disables
 TLS verification — not recommended. `drivers.acme.verify` works the same way: a bundle path,
-`true`/`null` (or `1`/`on`/`yes`) for the system bundle, or `false`.
+`true`/`null` (or `1`/`on`/`yes`) for the system bundle, or `false`. Any other string is a bundle
+path (a typo fails the TLS handshake — it never disables verification), and a value that is
+neither a string nor a boolean (an array, a float) throws `InvalidConfigurationException`.
 
 ## Usage
 
