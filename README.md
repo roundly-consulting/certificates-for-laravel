@@ -165,13 +165,14 @@ The published config lives at `config/certificates.php`.
 
 Every `bool` switch accepts the usual env spellings — `true`/`false`, `1`/`0`, `on`/`off`,
 `yes`/`no` — so `CERTIFICATES_ALERTS=1` turns alerts on and `CERTIFICATES_STATUS_CACHE=off` turns
-the cache off; anything unrecognised falls back to the default.
+the cache off. Unset or `null` reads as the default; anything else (a typo such as `disabled`) throws
+`InvalidConfigurationException` naming the key instead of quietly reading as the default.
 
 `default` selects which driver is used when none is named. The `null` driver is an inert no-op for
 local/dev; the `array` driver is an in-memory backend used by the test fake.
 
 `key_type` is the column type of the polymorphic `certifiable` owner — `bigint`, `uuid` or `ulid`
-(anything else falls back to `bigint`). The migration reads it, so set it before you migrate, and
+(case-insensitive; unset reads as `bigint`, anything else throws `InvalidConfigurationException`). The migration reads it, so set it before you migrate, and
 every model you attach certificates to must share it. It is unrelated to the ACME account key
 algorithm, `drivers.acme.account.key_type` (`EC` / `RSA`).
 

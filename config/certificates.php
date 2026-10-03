@@ -49,8 +49,9 @@ return [
     |
     | The key type used for the polymorphic "certifiable" owner column. Use "uuid"
     | or "ulid" when the models a certificate belongs to use UUID/ULID primary
-    | keys, otherwise leave it as "bigint". Anything unrecognized falls back to
-    | "bigint". Your certifiable models must share one key type.
+    | keys, otherwise leave it as "bigint" (also the default when unset). Any
+    | other value throws InvalidConfigurationException rather than silently
+    | building bigint keys. Your certifiable models must share one key type.
     |
     | This is a DATABASE key type and is unrelated to the ACME account key
     | algorithm under drivers.acme.account.key_type (EC/RSA).

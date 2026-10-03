@@ -12,8 +12,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Silently falls back to bigint for an unrecognized value, so a typo in
-        // the host's config never leaves the package unable to migrate.
+        // Absent reads as bigint; an unrecognized value throws, so a typo in the
+        // host's config never builds the wrong morph key type.
         $keyType = KeyType::fromConfig('certificates.key_type');
 
         Schema::create((string) config('certificates.table', 'certificates'), function (Blueprint $table) use ($keyType): void {
