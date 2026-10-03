@@ -180,10 +180,15 @@ default; a present value of the wrong shape throws `InvalidConfigurationExceptio
 - string settings (`default`, `table`, `lock.name`, disks, paths, namespace, issuer, …) must be
   strings, and a blank one is not set → its default; the optional ones (`connection`, queues,
   stores, tokens, `contact`, `solver`, `notifiable`) must be strings when set, and a blank value
-  is not set → unset. `name_prefix` may be `''`;
+  is not set → unset (`name_prefix` is the one exception, below);
 - `drivers.acme.account.key_type` is `EC` or `RSA`; `alerts.channels` is a list of channel names;
   `alerts.notifiable` must resolve to an Eloquent model and `drivers.acme.solver` to an
   `AcmeChallengeSolver`.
+
+**Exception to the blank rule — `name_prefix`.** Here `''` is a value, not "not set": a blank
+`CERTIFICATES_NAME_PREFIX=` names certificates after the bare host (`app.example.com` →
+`app-example-com`), never the `generated-tls-` default. Only a prefix that is not set (absent or
+`null`) takes `generated-tls-`; a non-string value throws `InvalidConfigurationException`.
 
 `default` selects which driver is used when none is named. The `null` driver is an inert no-op for
 local/dev; the `array` driver is an in-memory backend used by the test fake.

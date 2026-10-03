@@ -86,6 +86,11 @@ return [
     | lowercased and folded into a DNS-1123 subdomain (max 253 characters):
     | "*.example.com" => "generated-tls-wildcard-example-com".
     |
+    | Exception to the blank rule: '' is a value here, not "not set". A blank
+    | CERTIFICATES_NAME_PREFIX= gives bare host names ("example-com"), never
+    | the default; only absent or null takes "generated-tls-". A non-string
+    | value throws.
+    |
     */
     'name_prefix' => env('CERTIFICATES_NAME_PREFIX', 'generated-tls-'),
 
