@@ -72,7 +72,7 @@ return [
     |
     */
     'renewal' => [
-        'threshold_days' => (int) env('CERTIFICATES_RENEW_THRESHOLD_DAYS', 21),
+        'threshold_days' => env('CERTIFICATES_RENEW_THRESHOLD_DAYS', 21),
         'queue' => env('CERTIFICATES_RENEW_QUEUE'),
     ],
 
@@ -104,7 +104,7 @@ return [
     */
     'lock' => [
         'name' => env('CERTIFICATES_LOCK_NAME', 'certificates:generate'),
-        'locked_for_seconds' => (int) env('CERTIFICATES_LOCK_SECONDS', 5),
+        'locked_for_seconds' => env('CERTIFICATES_LOCK_SECONDS', 5),
     ],
 
     /*
@@ -121,7 +121,7 @@ return [
     'status_cache' => [
         'enabled' => env('CERTIFICATES_STATUS_CACHE', true),
         'store' => env('CERTIFICATES_STATUS_CACHE_STORE'),
-        'ttl' => (int) env('CERTIFICATES_STATUS_CACHE_TTL', 300),
+        'ttl' => env('CERTIFICATES_STATUS_CACHE_TTL', 300),
     ],
 
     /*
@@ -145,8 +145,8 @@ return [
         'enabled' => env('CERTIFICATES_ALERTS', false),
         'notifiable' => env('CERTIFICATES_ALERTS_NOTIFIABLE'),
         'thresholds' => [
-            'warning_days' => (int) env('CERTIFICATES_ALERTS_WARNING_DAYS', 30),
-            'critical_days' => (int) env('CERTIFICATES_ALERTS_CRITICAL_DAYS', 7),
+            'warning_days' => env('CERTIFICATES_ALERTS_WARNING_DAYS', 30),
+            'critical_days' => env('CERTIFICATES_ALERTS_CRITICAL_DAYS', 7),
         ],
         'channels' => ['mail'],
         'register_check' => env('CERTIFICATES_ALERTS_REGISTER_CHECK', false),
@@ -201,7 +201,7 @@ return [
             // Backend service routed for newly added hosts.
             'service' => [
                 'name' => env('CERTIFICATES_K8S_SERVICE_NAME'),
-                'port' => (int) env('CERTIFICATES_K8S_SERVICE_PORT', 80),
+                'port' => env('CERTIFICATES_K8S_SERVICE_PORT', 80),
             ],
         ],
 
@@ -241,8 +241,8 @@ return [
 
             // Validation/finalization polling bounds.
             'poll' => [
-                'attempts' => (int) env('CERTIFICATES_ACME_POLL_ATTEMPTS', 30),
-                'seconds' => (int) env('CERTIFICATES_ACME_POLL_SECONDS', 2),
+                'attempts' => env('CERTIFICATES_ACME_POLL_ATTEMPTS', 30),
+                'seconds' => env('CERTIFICATES_ACME_POLL_SECONDS', 2),
             ],
 
             // CA bundle path; true/null verifies against the system CA bundle, and
@@ -257,7 +257,7 @@ return [
             'disk' => env('CERTIFICATES_FS_DISK', 'local'),
             'path' => env('CERTIFICATES_FS_PATH', 'certificates'),
             'self_signed' => env('CERTIFICATES_FS_SELF_SIGNED', false),
-            'self_signed_days' => (int) env('CERTIFICATES_FS_SELF_SIGNED_DAYS', 90),
+            'self_signed_days' => env('CERTIFICATES_FS_SELF_SIGNED_DAYS', 90),
         ],
 
         // No-op driver for local/dev where no certificate backend exists.

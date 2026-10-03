@@ -23,12 +23,15 @@ use RoundlyConsulting\Certificates\Events\CertificateExpired;
 use RoundlyConsulting\Certificates\Events\CertificateFailed;
 use RoundlyConsulting\Certificates\Events\CertificateRevoked;
 use RoundlyConsulting\Certificates\Listeners\AlertOnCertificateLifecycleFailure;
+use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Stores\FilesystemCertificateStore;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\Support\Settings;
 use RoundlyConsulting\Certificates\Support\TlsVerification;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 use RoundlyConsulting\PackageToolkit\Support\Config;
@@ -96,21 +99,21 @@ final class CertificatesServiceProvider extends PackageServiceProvider
         // Default certificate store + challenge solver, overridable by host apps.
         $this->app->singleton(CertificateStore::class, function (): CertificateStore {
             /** @var array<string, mixed> $store */
-            $store = config('certificates.drivers.acme.store', []);
+            $store = config('certificates.drivers.acme.store') ?? [];
 
             return new FilesystemCertificateStore(
-                disk: (string) ($store['disk'] ?? 'local'),
-                path: (string) ($store['path'] ?? 'certificates'),
+                disk: Settings::string('certificates.drivers.acme.store.disk', $store['disk'] ?? null, 'local'),
+                path: Settings::string('certificates.drivers.acme.store.path', $store['path'] ?? null, 'certificates'),
             );
         });
 
         $this->app->singleton(AcmeChallengeSolver::class, function (): AcmeChallengeSolver {
             /** @var array<string, mixed> $http */
-            $http = config('certificates.drivers.acme.http', []);
+            $http = config('certificates.drivers.acme.http') ?? [];
 
             return new HttpChallengeSolver(
-                disk: (string) ($http['disk'] ?? 'local'),
-                path: (string) ($http['path'] ?? 'acme-challenge'),
+                disk: Settings::string('certificates.drivers.acme.http.disk', $http['disk'] ?? null, 'local'),
+                path: Settings::string('certificates.drivers.acme.http.path', $http['path'] ?? null, 'acme-challenge'),
             );
         });
 
@@ -151,8 +154,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
             // Check base's own null default, and `certificates.alerts.channels` — a
             // shipped, documented key — reaches nothing. A host configuring `['slack']`
             // was silently notified wherever alerts happened to default to.
-            /** @var list<string> $channels */
-            $channels = (array) config('certificates.alerts.channels', ['mail']);
+            $channels = Settings::strings('certificates.alerts.channels', config('certificates.alerts.channels'), ['mail']);
 
             Health::check((new CertificateExpiryCheck)->via($channels));
         }
@@ -184,9 +186,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
 
     private static function renewal(): string
     {
-        $days = config('certificates.renewal.threshold_days');
-
-        return is_int($days) ? $days.' days before expiry' : 'NEVER';
+        return self::valid(static fn (): string => Certificate::thresholdDays().' days before expiry');
     }
 
     private static function statusCache(): string
@@ -195,10 +195,9 @@ final class CertificatesServiceProvider extends PackageServiceProvider
             return 'OFF';
         }
 
-        $ttl = config('certificates.status_cache.ttl');
         $store = self::presence('certificates.status_cache.store', 'DEFAULT');
 
-        return sprintf('ON (%ss, store %s)', is_int($ttl) ? $ttl : 0, $store);
+        return sprintf('ON (%s, store %s)', self::valid(static fn (): string => CachedStatusResolver::ttl().'s'), $store);
     }
 
     private static function alerts(): string
@@ -207,14 +206,27 @@ final class CertificatesServiceProvider extends PackageServiceProvider
             return 'OFF';
         }
 
-        $warning = config('certificates.alerts.thresholds.warning_days');
-        $critical = config('certificates.alerts.thresholds.critical_days');
-
         return sprintf(
-            'ON (warn %sd, critical %sd)',
-            is_int($warning) ? $warning : 0,
-            is_int($critical) ? $critical : 0,
+            'ON (warn %s, critical %s)',
+            self::valid(static fn (): string => CertificateExpiryCheck::configuredWarningDays().'d'),
+            self::valid(static fn (): string => CertificateExpiryCheck::configuredCriticalDays().'d'),
         );
+    }
+
+    /**
+     * A setting rendered through its strict reader — or `INVALID` when that reader throws,
+     * so `about` reports a misconfiguration instead of dying on it (the real reads still
+     * throw).
+     *
+     * @param  callable(): string  $render
+     */
+    private static function valid(callable $render): string
+    {
+        try {
+            return $render();
+        } catch (InvalidConfigurationException) {
+            return 'INVALID';
+        }
     }
 
     /**
@@ -239,7 +251,13 @@ final class CertificatesServiceProvider extends PackageServiceProvider
      */
     private static function kubernetesCa(): string
     {
-        return match (TlsVerification::from(config('certificates.drivers.kubernetes.ca_path'))) {
+        try {
+            $verify = TlsVerification::from(config('certificates.drivers.kubernetes.ca_path'), 'certificates.drivers.kubernetes.ca_path');
+        } catch (InvalidConfigurationException) {
+            return 'INVALID';
+        }
+
+        return match ($verify) {
             false => 'UNVERIFIED',
             true => 'SYSTEM',
             default => 'SET',

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use RoundlyConsulting\Certificates\Alerts\ExpiryNotifiableResolver;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Tests\Fixtures\AlertTeam;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 beforeEach(function (): void {
     $this->resolver = new ExpiryNotifiableResolver;
@@ -47,3 +48,15 @@ it('returns null when nothing resolves', function (): void {
 
     expect($this->resolver->resolve($cert))->toBeNull();
 });
+
+it('refuses a configured notifiable that resolves to no model (strict config)', function (mixed $configured): void {
+    config()->set('certificates.alerts.notifiable', $configured);
+    app()->instance('not-a-model', new stdClass);
+    $cert = Certificate::factory()->issued()->create();
+
+    expect(fn () => $this->resolver->resolve($cert))
+        ->toThrow(InvalidConfigurationException::class, 'certificates.alerts.notifiable');
+})->with([
+    'not a model' => ['not-a-model'],
+    'not a string' => [['App\\Models\\Team']],
+]);

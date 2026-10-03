@@ -21,12 +21,9 @@ final class ProvisioningLock
 {
     public static function for(string $certificateName): Lock
     {
-        $prefix = config('certificates.lock.name');
-        $seconds = config('certificates.lock.locked_for_seconds');
-
         return Cache::lock(
-            name: (is_string($prefix) && $prefix !== '' ? $prefix : 'certificates:generate').':'.$certificateName,
-            seconds: is_numeric($seconds) ? max(1, (int) $seconds) : 5,
+            name: Settings::string('certificates.lock.name', config('certificates.lock.name'), 'certificates:generate').':'.$certificateName,
+            seconds: Settings::integer('certificates.lock.locked_for_seconds', config('certificates.lock.locked_for_seconds'), 5, min: 1),
         );
     }
 }

@@ -6,6 +6,8 @@ namespace RoundlyConsulting\Certificates\Alerts;
 
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\Settings;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 /**
  * Resolves the alerts notifiable for a certificate with a fixed precedence:
@@ -20,12 +22,17 @@ final class ExpiryNotifiableResolver
             return $explicit;
         }
 
-        $configured = config('certificates.alerts.notifiable');
+        $configured = Settings::optionalString('certificates.alerts.notifiable', config('certificates.alerts.notifiable'));
 
-        if (is_string($configured) && $configured !== '') {
+        if ($configured !== null) {
             $resolved = app($configured);
 
-            return $resolved instanceof Model ? $resolved : null;
+            // A configured notifiable that resolves to no model would silently send no alert.
+            if (! $resolved instanceof Model) {
+                throw new InvalidConfigurationException('Configuration value [certificates.alerts.notifiable] must resolve to an Eloquent model, ['.get_debug_type($resolved).'] given.');
+            }
+
+            return $resolved;
         }
 
         $certifiable = $certificate->certifiable;

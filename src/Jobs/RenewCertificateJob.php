@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use RoundlyConsulting\Certificates\Actions\RenewCertificateAction;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\Support\Settings;
 
 /**
  * The queued form of a renewal, dispatched by `Certificates::renewLater()` and
@@ -28,9 +29,9 @@ final class RenewCertificateJob implements ShouldQueue
         public readonly int $certificateId,
         public readonly ?string $databaseConnection = null,
     ) {
-        $queue = config('certificates.renewal.queue');
+        $queue = Settings::optionalString('certificates.renewal.queue', config('certificates.renewal.queue'));
 
-        if (is_string($queue)) {
+        if ($queue !== null) {
             $this->onQueue($queue);
         }
     }

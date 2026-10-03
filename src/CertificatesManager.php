@@ -36,6 +36,7 @@ use RoundlyConsulting\Certificates\Support\CertificateBuilder;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 use RoundlyConsulting\Certificates\Support\CertificateName;
 use RoundlyConsulting\Certificates\Support\ProvisioningLock;
+use RoundlyConsulting\Certificates\Support\Settings;
 use RoundlyConsulting\Certificates\ValueObjects\RemoteCertificate;
 
 /**
@@ -61,8 +62,7 @@ class CertificatesManager
     ) {
         $this->statusResolver = $statusResolver;
 
-        $configured = config('certificates.connection');
-        $this->connection = $connection ?? (is_string($configured) && $configured !== '' ? $configured : null);
+        $this->connection = $connection ?? Settings::optionalString('certificates.connection', config('certificates.connection'));
     }
 
     /**

@@ -17,6 +17,7 @@ use RoundlyConsulting\Certificates\Database\Factories\CertificateFactory;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Events\CertificateExpired;
 use RoundlyConsulting\Certificates\Events\CertificateRevoked;
+use RoundlyConsulting\Certificates\Support\Settings;
 
 /**
  * @property int $id
@@ -54,18 +55,27 @@ class Certificate extends Model
 
     public function getTable(): string
     {
-        return (string) config('certificates.table', 'certificates');
+        return Settings::string('certificates.table', config('certificates.table'), 'certificates');
     }
 
     public function getConnectionName(): ?string
     {
-        $configured = config('certificates.connection');
+        $configured = Settings::optionalString('certificates.connection', config('certificates.connection'));
 
-        if ($this->connection === null && is_string($configured) && $configured !== '') {
+        if ($this->connection === null && $configured !== null) {
             return $configured;
         }
 
         return parent::getConnectionName();
+    }
+
+    /**
+     * `certificates.renewal.threshold_days`: renew this many days before expiry (at least
+     * one). An int or a canonical integer string; anything else throws.
+     */
+    public static function thresholdDays(): int
+    {
+        return Settings::integer('certificates.renewal.threshold_days', config('certificates.renewal.threshold_days'), 21, min: 1);
     }
 
     /**
@@ -217,7 +227,7 @@ class Certificate extends Model
      */
     public function scopeExpiring(Builder $query, ?int $days = null): void
     {
-        $days ??= (int) config('certificates.renewal.threshold_days', 21);
+        $days ??= self::thresholdDays();
 
         $query->whereIn('status', [CertificateStatus::Issued, CertificateStatus::Renewed, CertificateStatus::Failed])
             ->whereNotNull('expires_at')

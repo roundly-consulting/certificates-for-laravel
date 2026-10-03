@@ -12,6 +12,7 @@ use RoundlyConsulting\Alerts\Notifications\HealthCheckFailedNotification;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\Support\Settings;
 
 /**
  * An alerts health check that turns certificate expiry into a monitored signal.
@@ -208,14 +209,31 @@ final class CertificateExpiryCheck extends Check
     {
         return $this->warningDays
             ?? $this->metaInt('warning_days')
-            ?? (int) config('certificates.alerts.thresholds.warning_days', 30);
+            ?? self::configuredWarningDays();
     }
 
     private function criticalDays(): int
     {
         return $this->criticalDays
             ?? $this->metaInt('critical_days')
-            ?? (int) config('certificates.alerts.thresholds.critical_days', 7);
+            ?? self::configuredCriticalDays();
+    }
+
+    /**
+     * `certificates.alerts.thresholds.warning_days` (0 or more). An int or a canonical
+     * integer string; anything else throws rather than reading as 0.
+     */
+    public static function configuredWarningDays(): int
+    {
+        return Settings::integer('certificates.alerts.thresholds.warning_days', config('certificates.alerts.thresholds.warning_days'), 30, min: 0);
+    }
+
+    /**
+     * `certificates.alerts.thresholds.critical_days` (0 or more), read like the warning one.
+     */
+    public static function configuredCriticalDays(): int
+    {
+        return Settings::integer('certificates.alerts.thresholds.critical_days', config('certificates.alerts.thresholds.critical_days'), 7, min: 0);
     }
 
     private function metaInt(string $key): ?int

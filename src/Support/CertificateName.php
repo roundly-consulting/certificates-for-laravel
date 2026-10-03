@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Certificates\Support;
 
 use Illuminate\Support\Str;
 use RoundlyConsulting\Crypto\Hash\Digest;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 /**
  * The deterministic secret / registry name for a domain: `{name_prefix}{domain}`, folded
@@ -23,14 +24,20 @@ final class CertificateName
 
     public static function for(string $domain): string
     {
-        $prefix = config('certificates.name_prefix');
+        // '' is a valid prefix (names are the bare host); a non-string one throws.
+        $prefix = config('certificates.name_prefix') ?? 'generated-tls-';
+
+        if (! is_string($prefix)) {
+            throw InvalidConfigurationException::notAString('certificates.name_prefix', $prefix);
+        }
+
         $host = Str::lower(trim($domain));
 
         if (str_starts_with($host, '*.')) {
             $host = 'wildcard.'.substr($host, 2);
         }
 
-        $name = Str::lower(is_string($prefix) ? $prefix : 'generated-tls-').$host;
+        $name = Str::lower($prefix).$host;
         $name = trim((string) preg_replace('/[^a-z0-9-]+/', '-', $name), '-');
 
         if (strlen($name) <= self::MAX_LENGTH) {

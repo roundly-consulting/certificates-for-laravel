@@ -35,7 +35,7 @@ final class CachedStatusResolver
             $report = $provider->status($name, $domain);
 
             if ($this->enabled()) {
-                $this->store()->put($this->key($driver, $name), $report, $this->ttl());
+                $this->store()->put($this->key($driver, $name), $report, self::ttl());
             }
 
             return $report;
@@ -44,7 +44,7 @@ final class CachedStatusResolver
         /** @var CertificateStatusReport $report */
         $report = $this->store()->remember(
             $this->key($driver, $name),
-            $this->ttl(),
+            self::ttl(),
             fn (): CertificateStatusReport => $provider->status($name, $domain),
         );
 
@@ -61,16 +61,18 @@ final class CachedStatusResolver
         return Config::boolean('certificates.status_cache.enabled', true);
     }
 
-    private function ttl(): int
+    /**
+     * `certificates.status_cache.ttl` in seconds (at least one). An int or a canonical
+     * integer string; anything else throws rather than caching for 0 seconds.
+     */
+    public static function ttl(): int
     {
-        return (int) config('certificates.status_cache.ttl', 300);
+        return Settings::integer('certificates.status_cache.ttl', config('certificates.status_cache.ttl'), 300, min: 1);
     }
 
     private function store(): Repository
     {
-        $store = config('certificates.status_cache.store');
-
-        return Cache::store(is_string($store) && $store !== '' ? $store : null);
+        return Cache::store(Settings::optionalString('certificates.status_cache.store', config('certificates.status_cache.store')));
     }
 
     private function key(string $driver, string $name): string
