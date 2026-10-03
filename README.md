@@ -165,11 +165,12 @@ The published config lives at `config/certificates.php`.
 
 Every `bool` switch accepts the usual env spellings — `true`/`false`, `1`/`0`, `on`/`off`,
 `yes`/`no` — so `CERTIFICATES_ALERTS=1` turns alerts on and `CERTIFICATES_STATUS_CACHE=off` turns
-the cache off. Unset or `null` reads as the default; anything else (a typo such as `disabled`) throws
+the cache off. Not set — absent, `null` or blank (`''`, what `KEY=` in `.env` gives) — reads as
+the default; anything else (a typo such as `disabled`) throws
 `InvalidConfigurationException` naming the key instead of quietly reading as the default.
 
-Every other value is read just as strictly. Unset or `null` reads as the default; a present value
-of the wrong shape throws `InvalidConfigurationException` naming the key:
+Every other value is read just as strictly. Not set (absent, `null` or blank) reads as the
+default; a present value of the wrong shape throws `InvalidConfigurationException` naming the key:
 
 - integers take an int or a canonical integer string (env values arrive as strings), so
   `CERTIFICATES_RENEW_THRESHOLD_DAYS=five`, `'1.5'` or a value out of range throws — never a silent
@@ -177,9 +178,9 @@ of the wrong shape throws `InvalidConfigurationException` naming the key:
   `drivers.acme.poll.*` and `drivers.filesystem.self_signed_days` ≥ 1; `alerts.thresholds.*` ≥ 0;
   `drivers.kubernetes.service.port` 1–65535;
 - string settings (`default`, `table`, `lock.name`, disks, paths, namespace, issuer, …) must be
-  non-blank strings; the optional ones (`connection`, queues, stores, tokens, `contact`, `solver`,
-  `notifiable`) must be strings when set, and a blank value reads as unset. `name_prefix` may be
-  `''`;
+  strings, and a blank one is not set → its default; the optional ones (`connection`, queues,
+  stores, tokens, `contact`, `solver`, `notifiable`) must be strings when set, and a blank value
+  is not set → unset. `name_prefix` may be `''`;
 - `drivers.acme.account.key_type` is `EC` or `RSA`; `alerts.channels` is a list of channel names;
   `alerts.notifiable` must resolve to an Eloquent model and `drivers.acme.solver` to an
   `AcmeChallengeSolver`.
@@ -188,7 +189,7 @@ of the wrong shape throws `InvalidConfigurationException` naming the key:
 local/dev; the `array` driver is an in-memory backend used by the test fake.
 
 `key_type` is the column type of the polymorphic `certifiable` owner — `bigint`, `uuid` or `ulid`
-(case-insensitive; unset reads as `bigint`, anything else throws `InvalidConfigurationException`). The migration reads it, so set it before you migrate, and
+(case-insensitive; unset or blank reads as `bigint`, anything else throws `InvalidConfigurationException`). The migration reads it, so set it before you migrate, and
 every model you attach certificates to must share it. It is unrelated to the ACME account key
 algorithm, `drivers.acme.account.key_type` (`EC` / `RSA`).
 
