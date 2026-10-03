@@ -161,27 +161,27 @@ final class CertificatesServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * Whether a config key holds a non-empty value — never the value itself.
+     * Whether a config key holds a value (blank is not set) — never the value itself.
      */
     private static function presence(string $key, string $absent): string
     {
         $value = config($key);
 
-        return is_string($value) && $value !== '' ? 'SET' : $absent;
+        return is_string($value) && ! Settings::notSet($value) ? 'SET' : $absent;
     }
 
     private static function defaultDriver(): string
     {
         $driver = config('certificates.default');
 
-        return is_string($driver) && $driver !== '' ? $driver : 'kubernetes';
+        return is_string($driver) && ! Settings::notSet($driver) ? $driver : 'kubernetes';
     }
 
     private static function table(): string
     {
         $table = config('certificates.table');
 
-        return is_string($table) && $table !== '' ? $table : 'certificates';
+        return is_string($table) && ! Settings::notSet($table) ? $table : 'certificates';
     }
 
     private static function renewal(): string
@@ -275,7 +275,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
 
         return sprintf(
             '%s (auto-register %s)',
-            is_string($type) && $type !== '' ? $type : 'EC',
+            is_string($type) && ! Settings::notSet($type) ? $type : 'EC',
             $autoRegister ? 'ON' : 'OFF',
         );
     }
@@ -289,7 +289,7 @@ final class CertificatesServiceProvider extends PackageServiceProvider
     {
         $solver = config('certificates.drivers.acme.solver');
 
-        if (! is_string($solver) || $solver === '') {
+        if (! is_string($solver) || Settings::notSet($solver)) {
             return 'http-01 (solver DEFAULT)';
         }
 

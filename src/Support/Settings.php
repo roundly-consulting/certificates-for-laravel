@@ -8,8 +8,9 @@ use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
- * Strict readers for the package's non-boolean settings. An absent (null) key takes its
- * default; a present value of the wrong shape throws the toolkit's
+ * Strict readers for the package's non-boolean settings. A key that is not set — absent,
+ * null or blank (`''` or whitespace, what a host's `KEY=` gives) — takes its default; a
+ * present value of the wrong shape throws the toolkit's
  * {@see InvalidConfigurationException} naming the key — `'five'` never becomes a 0-day
  * threshold, and a mistyped string never silently reads as the default.
  *
@@ -22,7 +23,7 @@ final class Settings
 {
     /**
      * An int or a canonical integer string (env values arrive as strings) within the
-     * bounds; `$default` only when `$value` is null.
+     * bounds; `$default` when `$value` is not set (null or blank).
      *
      * @throws InvalidConfigurationException
      */
@@ -32,16 +33,18 @@ final class Settings
     }
 
     /**
-     * A required string: `$default` only when `$value` is null; a blank or non-string value
-     * throws.
+     * A required string: `$default` when `$value` is not set (null or blank); a non-string
+     * value throws.
      *
      * @throws InvalidConfigurationException
      */
     public static function string(string $key, mixed $value, string $default): string
     {
-        $value ??= $default;
+        if (self::notSet($value)) {
+            return $default;
+        }
 
-        if (! is_string($value) || trim($value) === '') {
+        if (! is_string($value)) {
             throw InvalidConfigurationException::notAString($key, $value);
         }
 
@@ -49,7 +52,7 @@ final class Settings
     }
 
     /**
-     * An optional string: null when absent or blank (an empty env value reads as unset);
+     * An optional string: null when not set — absent, null or blank (an empty env value);
      * a value that is not a string throws.
      *
      * @throws InvalidConfigurationException
@@ -68,8 +71,8 @@ final class Settings
     }
 
     /**
-     * A list of non-blank strings; `$default` only when absent. A non-list, or any entry
-     * that is not a non-blank string, throws.
+     * A list of non-blank strings; `$default` when not set (null or blank). A non-list, or
+     * any entry that is not a non-blank string, throws.
      *
      * @param  list<string>  $default
      * @return list<string>
@@ -78,7 +81,9 @@ final class Settings
      */
     public static function strings(string $key, mixed $value, array $default): array
     {
-        $value ??= $default;
+        if (self::notSet($value)) {
+            return $default;
+        }
 
         if (! is_array($value) || ! array_is_list($value)) {
             throw new InvalidConfigurationException("Configuration value [{$key}] must be a list of non-empty strings, [".get_debug_type($value).'] given.');
@@ -91,5 +96,13 @@ final class Settings
         }
 
         return $value;
+    }
+
+    /**
+     * Absent, null or blank (`''` or whitespace): the key is not set, so its default applies.
+     */
+    public static function notSet(mixed $value): bool
+    {
+        return $value === null || (is_string($value) && trim($value) === '');
     }
 }

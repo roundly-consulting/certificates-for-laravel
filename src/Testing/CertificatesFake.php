@@ -210,7 +210,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function expiring(?int $days = null, ?string $driver = null): EloquentCollection
     {
-        $days ??= (int) config('certificates.renewal.threshold_days', 21);
+        $days ??= Certificate::thresholdDays();
         $until = CarbonImmutable::now()->addDays($days);
 
         $due = array_filter(

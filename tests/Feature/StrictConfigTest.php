@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use RoundlyConsulting\Certificates\Alerts\CertificateExpiryCheck;
 use RoundlyConsulting\Certificates\CertificateProviderManager;
@@ -13,12 +14,14 @@ use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
 use RoundlyConsulting\Certificates\Support\CertificateName;
 use RoundlyConsulting\Certificates\Support\ProvisioningLock;
+use RoundlyConsulting\Certificates\Support\Settings;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 /*
- * Every non-boolean setting is read strictly: an absent key takes its default, and a
- * present value of the wrong shape throws naming the key — `'five'` never becomes a
- * 0-day renewal threshold, a mistyped string never reads as the default.
+ * Every non-boolean setting is read strictly: a key that is not set (absent, null or
+ * blank — a host's `KEY=`) takes its default, and a present value of the wrong shape
+ * throws naming the key — `'five'` never becomes a 0-day renewal threshold, a mistyped
+ * string never reads as the default.
  */
 
 it('hands raw env integers to the strict readers (strict config)', function (string $env, string $path): void {
@@ -114,7 +117,7 @@ it('refuses junk driver settings when the driver is built (strict config)', func
 })->with([
     'service port out of range' => ['kubernetes', 'certificates.drivers.kubernetes.service.port', 70000],
     'service port junk' => ['kubernetes', 'certificates.drivers.kubernetes.service.port', 'http'],
-    'namespace blank' => ['kubernetes', 'certificates.drivers.kubernetes.namespace', ''],
+    'namespace not a string' => ['kubernetes', 'certificates.drivers.kubernetes.namespace', ['default']],
     'token not a string' => ['kubernetes', 'certificates.drivers.kubernetes.token', ['t']],
     'ca path not a path or switch' => ['kubernetes', 'certificates.drivers.kubernetes.ca_path', ['x']],
     'poll attempts zero' => ['acme', 'certificates.drivers.acme.poll.attempts', 0],
@@ -124,9 +127,33 @@ it('refuses junk driver settings when the driver is built (strict config)', func
     'acme contact not a string' => ['acme', 'certificates.drivers.acme.contact', ['ops@example.com']],
     'acme solver not a solver' => ['acme', 'certificates.drivers.acme.solver', stdClass::class],
     'filesystem days junk' => ['filesystem', 'certificates.drivers.filesystem.self_signed_days', 'ninety'],
-    'filesystem disk blank' => ['filesystem', 'certificates.drivers.filesystem.disk', ' '],
+    'filesystem disk not a string' => ['filesystem', 'certificates.drivers.filesystem.disk', 7],
     'driver section not an array' => ['filesystem', 'certificates.drivers.filesystem', 'local'],
 ]);
+
+it('builds a driver whose blank settings take their defaults (strict config)', function (string $driver, string $key): void {
+    Storage::fake('local');
+    config()->set($key, '');
+    app()->forgetInstance(CertificateProviderManager::class);
+
+    expect(app(CertificateProviderManager::class)->provider($driver))->not->toBeNull();
+})->with([
+    'namespace' => ['kubernetes', 'certificates.drivers.kubernetes.namespace'],
+    'service port' => ['kubernetes', 'certificates.drivers.kubernetes.service.port'],
+    'poll attempts' => ['acme', 'certificates.drivers.acme.poll.attempts'],
+    'acme key type' => ['acme', 'certificates.drivers.acme.account.key_type'],
+    'acme directory' => ['acme', 'certificates.drivers.acme.directory'],
+    'acme solver' => ['acme', 'certificates.drivers.acme.solver'],
+    'filesystem disk' => ['filesystem', 'certificates.drivers.filesystem.disk'],
+    'filesystem days' => ['filesystem', 'certificates.drivers.filesystem.self_signed_days'],
+]);
+
+it('reads a blank default driver as kubernetes (strict config)', function (): void {
+    config()->set('certificates.default', ' ');
+
+    expect(app(CertificateProviderManager::class)->getDefaultDriver())->toBe('kubernetes')
+        ->and(strictCertificatesAboutRow('driver'))->toBe('kubernetes');
+});
 
 it('refuses a non-string default driver (strict config)', function (): void {
     config()->set('certificates.default', ['kubernetes']);
@@ -140,14 +167,34 @@ it('refuses mistyped string settings instead of reading the default (strict conf
 
     expect(fn (): mixed => strictCertificatesRead($read))->toThrow(InvalidConfigurationException::class, "[{$key}]");
 })->with([
-    'table blank' => ['certificates.table', '', 'table'],
+    'table not a string' => ['certificates.table', ['certs'], 'table'],
     'connection not a string' => ['certificates.connection', 1, 'connection'],
     'manager connection not a string' => ['certificates.connection', ['db'], 'manager'],
-    'lock name blank' => ['certificates.lock.name', '', 'lock'],
+    'lock name not a string' => ['certificates.lock.name', 5, 'lock'],
     'name prefix not a string' => ['certificates.name_prefix', false, 'name'],
     'renewal queue not a string' => ['certificates.renewal.queue', ['renewals'], 'job'],
     'status store not a string' => ['certificates.status_cache.store', 5, 'status store'],
 ]);
+
+it('reads blank string and integer settings as not set, so the defaults apply (strict config)', function (string $blank): void {
+    config()->set('certificates.table', $blank);
+    config()->set('certificates.connection', $blank);
+    config()->set('certificates.lock.name', $blank);
+    config()->set('certificates.lock.locked_for_seconds', $blank);
+    config()->set('certificates.renewal.threshold_days', $blank);
+    config()->set('certificates.status_cache.ttl', $blank);
+    config()->set('certificates.alerts.thresholds.warning_days', $blank);
+    config()->set('certificates.alerts.thresholds.critical_days', $blank);
+
+    expect((new Certificate)->getTable())->toBe('certificates')
+        ->and((new Certificate)->getConnectionName())->toBeNull()
+        ->and(Certificate::thresholdDays())->toBe(21)
+        ->and(CachedStatusResolver::ttl())->toBe(300)
+        ->and(CertificateExpiryCheck::configuredWarningDays())->toBe(30)
+        ->and(CertificateExpiryCheck::configuredCriticalDays())->toBe(7)
+        ->and(ProvisioningLock::for('x')->get())->toBeTrue()
+        ->and(Cache::lock('certificates:generate:x')->get())->toBeFalse();
+})->with(['empty' => [''], 'whitespace' => ['  ']]);
 
 it('accepts an empty name prefix (strict config)', function (): void {
     config()->set('certificates.name_prefix', '');
@@ -168,6 +215,18 @@ it('refuses a mistyped alert channel list when the check registers (strict confi
     'a blank entry' => [['mail', '']],
     'a non-string entry' => [[1]],
 ]);
+
+it('reads a blank alert channel list as not set, so mail applies (strict config)', function (): void {
+    config()->set('certificates.alerts.register_check', true);
+    config()->set('certificates.alerts.channels', '');
+
+    $provider = new CertificatesServiceProvider($this->app);
+    $provider->register();
+    $provider->boot();
+
+    expect(Settings::strings('certificates.alerts.channels', '', ['mail']))->toBe(['mail'])
+        ->and(Settings::strings('certificates.alerts.channels', null, ['mail']))->toBe(['mail']);
+});
 
 it('renders junk integers as INVALID in about rather than throwing (strict config)', function (string $key, string $row): void {
     config()->set('certificates.alerts.enabled', true);

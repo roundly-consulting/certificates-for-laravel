@@ -361,7 +361,7 @@ class CertificatesManager
 
     protected function registryAvailable(): bool
     {
-        return Schema::connection($this->connection)->hasTable((string) config('certificates.table', 'certificates'));
+        return Schema::connection($this->connection)->hasTable(Settings::string('certificates.table', config('certificates.table'), 'certificates'));
     }
 
     private function resolver(): CachedStatusResolver
