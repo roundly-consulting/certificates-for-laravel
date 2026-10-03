@@ -18,10 +18,14 @@ it('resolves a host subclass configured at certificates.model', function (): voi
     expect(CertificateModel::class())->toBe(CustomCertificate::class);
 });
 
-it('falls back to the packaged model when the configured model cannot answer its queries', function (): void {
+it('refuses a foreign model instead of falling back to the packaged one', function (): void {
+    // The toolkit refuses any class that is not the packaged model or a subclass of it.
     config()->set('certificates.model', Tenant::class);
 
-    expect(CertificateModel::class())->toBe(Certificate::class);
+    expect(fn (): string => CertificateModel::class())->toThrow(
+        InvalidConfigurationException::class,
+        'Configuration value [certificates.model] must be a class-string of ['.Certificate::class.'], ['.Tenant::class.'] given.',
+    );
 });
 
 it('throws when the configured model is not an eloquent model at all', function (): void {
