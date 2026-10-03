@@ -60,3 +60,14 @@ it('refuses a configured notifiable that resolves to no model (strict config)', 
     'not a model' => ['not-a-model'],
     'not a string' => [['App\\Models\\Team']],
 ]);
+
+it('refuses a configured class the container builds as an unsaved model', function (): void {
+    // Unbound, `app(AlertTeam::class)` is a fresh instance with no key — alerts could not
+    // store a monitor or an alert against it (notifiable_id is NOT NULL).
+    AlertTeam::query()->create(['name' => 'ops']);
+    config()->set('certificates.alerts.notifiable', AlertTeam::class);
+    $cert = Certificate::factory()->issued()->create();
+
+    expect(fn () => $this->resolver->resolve($cert))
+        ->toThrow(InvalidConfigurationException::class, 'resolved to an unsaved ['.AlertTeam::class.']');
+});

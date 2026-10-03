@@ -140,7 +140,9 @@ return [
     | every expiring cert against a resolved notifiable when "enabled" is true.
     |
     | "notifiable" is an optional FQCN resolved from the container; it takes
-    | precedence over each certificate's own certifiable owner. "thresholds"
+    | precedence over each certificate's own certifiable owner. Bind the class
+    | to its stored record (an unbound class builds an unsaved model, which is
+    | refused). "thresholds"
     | drive the check's warning/critical banding (warning >= critical). Set
     | "register_check" to register a registry-wide CertificateExpiryCheck with
     | the alerts registry at boot for a single global expiry signal.

@@ -8,6 +8,7 @@ use RoundlyConsulting\Certificates\Events\CertificateRevoked;
 use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Tests\Fixtures\AlertTeam;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 it('dispatches CertificateRevoked when a certificate is marked revoked', function (): void {
     Event::fake([CertificateRevoked::class]);
@@ -74,4 +75,14 @@ it('does not alert on lifecycle events when alerts are disabled', function (): v
     $cert->markRevoked();
 
     expect($team->alerts()->count())->toBe(0);
+});
+
+it('names the setting when the configured notifiable class is not bound to a stored model', function (): void {
+    config()->set('certificates.alerts.enabled', true);
+    config()->set('certificates.alerts.notifiable', AlertTeam::class);
+    Certificate::factory()->issued()->create(['domain' => 'rev.com', 'driver' => 'array']);
+
+    // Before: a NOT NULL violation on health_checks.notifiable_id from inside the listener.
+    expect(fn () => Certificates::revoke('rev.com', 'key compromise'))
+        ->toThrow(InvalidConfigurationException::class, 'certificates.alerts.notifiable');
 });

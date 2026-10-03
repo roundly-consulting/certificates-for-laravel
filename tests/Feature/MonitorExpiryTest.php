@@ -10,6 +10,7 @@ use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Facades\Certificates;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Tests\Fixtures\AlertTeam;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 it('returns a pending scheduled check bound to the explicit notifiable', function (): void {
     $cert = Certificate::factory()->issued()->create(['domain' => 'app.com', 'driver' => 'array']);
@@ -67,4 +68,14 @@ it('schedules through alerts, so Health::fake() records the monitor', function (
     Certificates::monitorExpiry($cert, $team)->daily()->save();
 
     $health->assertMonitored(CertificateExpiryCheck::class, $team);
+});
+
+it('refuses a configured notifiable class that is not bound to a stored model', function (): void {
+    AlertTeam::query()->create(['name' => 'ops']);
+    config()->set('certificates.alerts.notifiable', AlertTeam::class);
+    $cert = Certificate::factory()->issued()->create(['domain' => 'unbound.com', 'driver' => 'array']);
+
+    expect(fn () => Certificates::monitorExpiry($cert)->save())
+        ->toThrow(InvalidConfigurationException::class, 'certificates.alerts.notifiable')
+        ->and(HealthCheck::query()->count())->toBe(0);
 });
