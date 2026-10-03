@@ -24,7 +24,9 @@ final class CertificateName
 
     public static function for(string $domain): string
     {
-        // '' is a valid prefix (names are the bare host); a non-string one throws.
+        // The one exception to "blank = not set": '' (a blank CERTIFICATES_NAME_PREFIX=) is a
+        // valid prefix — names are the bare host. Only null/absent takes the default; a
+        // non-string one throws.
         $prefix = config('certificates.name_prefix') ?? 'generated-tls-';
 
         if (! is_string($prefix)) {
