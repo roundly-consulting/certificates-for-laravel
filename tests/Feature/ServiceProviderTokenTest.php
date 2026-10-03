@@ -28,11 +28,3 @@ it('resolves with an empty token when none is configured', function (): void {
 
     expect(app(CertificateProvider::class))->toBeInstanceOf(KubernetesProvider::class);
 });
-
-it('publishes the config file', function (): void {
-    $this->artisan('vendor:publish', ['--tag' => 'certificates-config'])->assertExitCode(0);
-
-    expect(file_exists(config_path('certificates.php')))->toBeTrue();
-
-    @unlink(config_path('certificates.php'));
-});

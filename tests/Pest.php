@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Certificates\Tests\Fixtures\PublishSandboxTestCase;
 use RoundlyConsulting\Certificates\Tests\Fixtures\RegisteredCheckTestCase;
 use RoundlyConsulting\Certificates\Tests\Fixtures\SwappedCertificateTestCase;
 use RoundlyConsulting\Certificates\Tests\TestCase;
@@ -23,6 +24,10 @@ uses(SwappedCertificateTestCase::class)->in('ModelSwap');
 // The alert-channel wiring is read during the provider's boot(), so it too needs its
 // own before-boot base case and directory.
 uses(RegisteredCheckTestCase::class)->in('AlertsCheck');
+
+// Publishing writes files: into a throwaway config/ set before boot, never the testbench
+// skeleton every parallel process loads its configuration from.
+uses(PublishSandboxTestCase::class)->in('Publish');
 
 /**
  * A throwaway self-signed certificate (with SANs) and its private key.
