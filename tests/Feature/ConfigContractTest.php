@@ -13,19 +13,12 @@ declare(strict_types=1);
  */
 it('ships exactly the config keys it reads', function (): void {
     expect(__DIR__.'/../../config/certificates.php')->toSatisfyConfigContract([__DIR__.'/../../src', __DIR__.'/../../database'], [
-        // Several real reads never appear as a `config(` token: `certificates.model`
-        // goes through the toolkit's `ModelResolver::for('certificates.model', …)` seam
-        // that drives the whole model swap, and `CertificateProviderManager` takes an injected
-        // `Illuminate\Contracts\Config\Repository`. The prefix is what makes those
-        // literals visible to the scraper.
-        //
         // Deliberately NO `excludeFromReverse` for the provider. The testing README's own
         // example excludes the service provider on the grounds that "a render is not a
         // read" — but this provider's `contributesToAbout()` closure calls
         // `config('certificates.…')` for real and `bindFromConfig()` does real reads too,
         // so excluding it would discard the only reader of several bound keys and weaken
         // the reverse direction for nothing.
-        'extraReadPrefixes' => ['certificates.'],
 
         // Each driver factory takes its whole `drivers.<name>` section and reads it by
         // offset rather than through a dozen `config()` calls, so those offsets ARE the
