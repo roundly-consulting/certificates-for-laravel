@@ -107,6 +107,32 @@ it('pluralises the days left in every expiry band', function (string $locale, in
     'critical sk 5' => ['sk', 30, 7, 5, 'Platnosť certifikátu pre app.example.com vyprší o 5 dní – obnovte ho, aby nedošlo k výpadku.'],
 ]);
 
+it('renders a zero count without stray whitespace', function (): void {
+    // An interval line ({1} …|[2,4] …|[5,*] …) leaves 0 to the locale's plural rule, which
+    // returns the segment untrimmed — a leading space. Zero has its own {0} segment.
+    app()->setLocale('sk');
+    app(CertificateProviderManager::class)->extend('array', fn (): ArrayProvider => new ArrayProvider);
+
+    $this->artisan('certificates:prune', ['--days' => '30'])
+        ->expectsOutput('Odstránilo sa 0 certifikátov.')
+        ->assertExitCode(0);
+
+    $this->artisan('certificates:sync', ['--driver' => 'array'])
+        ->expectsOutput('Od poskytovateľa array sa synchronizovalo 0 certifikátov.')
+        ->assertExitCode(0);
+
+    $certificate = Certificate::factory()->create([
+        'domain' => 'today.example.com',
+        'status' => CertificateStatus::Issued,
+        'expires_at' => CarbonImmutable::now()->addHours(2),
+    ]);
+
+    expect((new CertificateExpiryCheck(certificateId: $certificate->id))->check()->message)
+        ->toBe('Platnosť certifikátu pre today.example.com vyprší o 0 dní – obnovte ho, aby nedošlo k výpadku.')
+        ->and((new CertificateExpiryCheck(certificateId: $certificate->id, warningDays: -1, criticalDays: -1))->check()->message)
+        ->toBe('Certifikát pre today.example.com je v poriadku (platnosť vyprší o 0 dní).');
+});
+
 it('keeps a published override without plural forms working', function (): void {
     // A host's lang/vendor/certificates/<locale>/messages.php written before the lines
     // gained plural forms has a single, pipe-less line — it must still render whole.
