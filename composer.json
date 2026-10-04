@@ -9,7 +9,7 @@
         "kubernetes",
         "cert-manager"
     ],
-    "homepage": "https://github.com/roundly-consulting/certificates-for-laravel",
+    "homepage": "https://roundly-consulting.com/open-source/docs/certificates-for-laravel",
     "license": "MIT",
     "authors": [
         {
@@ -18,6 +18,9 @@
             "role": "Developer"
         }
     ],
+    "support": {
+        "docs": "https://roundly-consulting.com/open-source/docs/certificates-for-laravel"
+    },
     "require": {
         "php": "^8.4",
         "ext-json": "*",
