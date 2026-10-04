@@ -111,7 +111,7 @@ it('syncs, renews, revokes and prunes on the bound connection only', function ()
     $this->travel(31)->days();
 
     $this->artisan('certificates:prune --connection=tenant')
-        ->expectsOutputToContain('Pruned 1 certificate(s).')
+        ->expectsOutputToContain('Pruned 1 certificate.')
         ->assertSuccessful();
 
     expect(Certificate::on('tenant')->count())->toBe(0);

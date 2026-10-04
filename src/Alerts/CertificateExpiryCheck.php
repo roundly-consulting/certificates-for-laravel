@@ -120,7 +120,7 @@ final class CertificateExpiryCheck extends Check
 
         if ($critical !== []) {
             return CheckResult::failed(
-                (string) trans('certificates::messages.alerts.registry_failed', ['count' => count($critical)]),
+                trans_choice('certificates::messages.alerts.registry_failed', count($critical)),
                 ['band' => 'registry', 'warning_days' => $warningDays, 'affected' => $affected],
             );
         }
@@ -161,20 +161,20 @@ final class CertificateExpiryCheck extends Check
 
         if ($days <= $this->criticalDays()) {
             return CheckResult::failed(
-                (string) trans('certificates::messages.alerts.critical', ['domain' => $certificate->domain, 'days' => $days]),
+                trans_choice('certificates::messages.alerts.critical', $days, ['domain' => $certificate->domain, 'days' => $days]),
                 [...$meta, 'band' => 'critical'],
             );
         }
 
         if ($days <= $this->warningDays()) {
             return CheckResult::warning(
-                (string) trans('certificates::messages.alerts.warning', ['domain' => $certificate->domain, 'days' => $days]),
+                trans_choice('certificates::messages.alerts.warning', $days, ['domain' => $certificate->domain, 'days' => $days]),
                 [...$meta, 'band' => 'warning'],
             );
         }
 
         return CheckResult::ok(
-            (string) trans('certificates::messages.alerts.ok', ['domain' => $certificate->domain, 'days' => $days]),
+            trans_choice('certificates::messages.alerts.ok', $days, ['domain' => $certificate->domain, 'days' => $days]),
             [...$meta, 'band' => 'ok'],
         );
     }

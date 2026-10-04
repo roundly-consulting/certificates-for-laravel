@@ -43,7 +43,7 @@ it('runs prune through the facade', function (): void {
     $fake = Certificates::fake();
 
     $this->artisan('certificates:prune', ['--days' => '14'])
-        ->expectsOutputToContain('Pruned 0 certificate(s).')
+        ->expectsOutputToContain('Pruned 0 certificates.')
         ->assertExitCode(0);
 
     $fake->assertPruned(14);

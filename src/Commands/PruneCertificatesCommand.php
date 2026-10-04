@@ -27,7 +27,7 @@ final class PruneCertificatesCommand extends Command
 
         $count = $certificates->on($connection)->prune($days, $status);
 
-        $this->info((string) trans('certificates::messages.commands.pruned', ['count' => $count]));
+        $this->info(trans_choice('certificates::messages.commands.pruned', $count));
 
         return self::SUCCESS;
     }

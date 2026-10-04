@@ -70,7 +70,7 @@ it('reports the synced count and driver', function (): void {
     app(CertificateProviderManager::class)->extend('array', fn () => $provider);
 
     $this->artisan('certificates:sync')
-        ->expectsOutputToContain('Synced 1 certificate(s) from the array provider.')
+        ->expectsOutputToContain('Synced 1 certificate from the array provider.')
         ->assertExitCode(0);
 });
 

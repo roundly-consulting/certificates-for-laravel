@@ -29,10 +29,7 @@ final class SyncCertificatesCommand extends Command
 
         $count = $certificates->on($connection)->sync($driver);
 
-        $this->info((string) trans('certificates::messages.commands.synced', [
-            'count' => $count,
-            'driver' => $driver,
-        ]));
+        $this->info(trans_choice('certificates::messages.commands.synced', $count, ['driver' => $driver]));
 
         return self::SUCCESS;
     }
