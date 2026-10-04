@@ -6,6 +6,8 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 
 ## Unreleased
 
+## 1.0.2 - 2026-10-04
+
 ### Fixed
 
 - The `CertificateException` thrown by `Certificates::monitorExpiry()` when no alert notifiable can be resolved is now translated into the current locale (English and Slovak).
