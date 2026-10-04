@@ -11,6 +11,7 @@ return [
     'no_material' => 'The filesystem driver is not a CA and no certificate material is stored for ":name". Place the PEM on the disk yourself, or enable drivers.filesystem.self_signed for local development.',
     'not_renewed' => 'The :driver provider did not produce a new certificate for ":domain".',
     'provider_reported' => 'The :driver provider reports the certificate for ":domain" as :status.',
+    'no_alert_notifiable' => 'No alert notifiable could be resolved for [:domain]. Pass one to monitorExpiry(), set certificates.alerts.notifiable, or associate the certificate with a certifiable owner.',
 
     'commands' => [
         'issuing' => 'Issuing certificate for :domain...',

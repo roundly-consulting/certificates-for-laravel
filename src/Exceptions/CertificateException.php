@@ -52,9 +52,6 @@ class CertificateException extends Exception
 
     public static function noAlertNotifiable(string $domain): self
     {
-        return new self(
-            "No alert notifiable could be resolved for [{$domain}]. Pass one to monitorExpiry(), ".
-            'set certificates.alerts.notifiable, or associate the certificate with a certifiable owner.',
-        );
+        return new self((string) trans('certificates::messages.no_alert_notifiable', ['domain' => $domain]));
     }
 }

@@ -11,6 +11,7 @@ return [
     'no_material' => 'Ovládač filesystem nie je certifikačná autorita a pre „:name“ nie sú uložené žiadne údaje certifikátu. Uložte súbor PEM na disk sami alebo pre lokálny vývoj zapnite drivers.filesystem.self_signed.',
     'not_renewed' => 'Poskytovateľ :driver nevytvoril pre „:domain“ nový certifikát.',
     'provider_reported' => 'Poskytovateľ :driver hlási certifikát pre „:domain“ v stave :status.',
+    'no_alert_notifiable' => 'Pre „:domain“ sa nepodarilo určiť príjemcu upozornení. Odovzdajte ho metóde monitorExpiry(), nastavte certificates.alerts.notifiable alebo certifikát priraďte vlastníkovi (certifiable).',
 
     'commands' => [
         'issuing' => 'Vydáva sa certifikát pre :domain...',
