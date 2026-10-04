@@ -36,7 +36,7 @@ class CertificateException extends Exception
         return new self((string) trans('certificates::messages.provider_reported', [
             'driver' => $driver,
             'domain' => $domain,
-            'status' => $status->value,
+            'status' => $status->label(),
         ]));
     }
 

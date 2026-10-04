@@ -9,6 +9,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 ### Fixed
 
 - The `CertificateException` thrown by `Certificates::monitorExpiry()` when no alert notifiable can be resolved is now translated into the current locale (English and Slovak).
+- `CertificateStatus` labels (`label()`, `labels()`, `options()`, `toOptions()`) are now translated through the package's `statuses` lines, so `certificates:issue`, `certificates:list` and the provider-reported status error show the status in the current locale; the provider-reported error names the status label ("Failed") instead of its raw value ("failed"). Locales the package ships no lines for keep the previous headline labels.
 
 ## 1.0.1 - 2026-10-04
 

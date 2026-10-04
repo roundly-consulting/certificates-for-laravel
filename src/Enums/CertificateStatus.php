@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Enums;
 
+use Illuminate\Support\Facades\Lang;
 use RoundlyConsulting\Enums\Helpers;
 
 enum CertificateStatus: string
 {
-    use Helpers;
+    use Helpers {
+        readable as private headlineLabel;
+    }
 
     case Pending = 'pending';
     case Requested = 'requested';
@@ -18,6 +21,19 @@ enum CertificateStatus: string
     case Failed = 'failed';
     case Expired = 'expired';
     case Revoked = 'revoked';
+
+    /**
+     * The status label in the current locale, from the package's `statuses` lines, so
+     * label(), labels(), options() and tryFromLabel() all agree. A locale the package
+     * ships no lines for keeps the trait's headline, where a host's JSON translation of
+     * "Issued" etc. still applies.
+     */
+    public function readable(): string
+    {
+        $key = 'certificates::messages.statuses.'.$this->value;
+
+        return Lang::has($key, null, false) ? (string) trans($key) : $this->headlineLabel();
+    }
 
     /**
      * A colour hint for admin UIs (Tailwind-ish palette names).

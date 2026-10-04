@@ -20,13 +20,34 @@ it('resolves the same label for every case as the old hand-rolled labels', funct
         ->and(CertificateStatus::Revoked->label())->toBe('Revoked');
 });
 
-it('does not resolve labels through the deleted status lang sub-array', function (): void {
-    // The trait derives labels from Str::headline(value); the messages.status.*
-    // keys were removed. Overriding one must not change the label — a guard against
-    // silently reintroducing the hand-rolled, lang-backed label().
-    app('translator')->addLines(['messages.status.issued' => 'TAMPERED'], 'en', 'certificates');
+it('labels every status in the current locale', function (): void {
+    app()->setLocale('sk');
 
-    expect(CertificateStatus::Issued->label())->toBe('Issued');
+    expect(CertificateStatus::labels()->all())->toBe([
+        'Čakajúci', 'Vyžiadaný', 'Vydaný', 'Obnovuje sa', 'Obnovený', 'Neúspešný', 'Po platnosti', 'Zrušený',
+    ])
+        ->and(CertificateStatus::Issued->label())->toBe('Vydaný')
+        ->and(CertificateStatus::toOptions()->get('revoked'))->toBe('Zrušený')
+        ->and(CertificateStatus::tryFromLabel('Obnovený'))->toBe(CertificateStatus::Renewed);
+});
+
+it('reads every label surface from the one statuses line a host can override', function (): void {
+    // A host overrides lang/vendor/certificates/<locale>/messages.php; label(), labels(),
+    // toOptions() and tryFromLabel() must all follow it, never drift apart.
+    app('translator')->addLines(['messages.statuses.issued' => 'Live'], 'en', 'certificates');
+
+    expect(CertificateStatus::Issued->label())->toBe('Live')
+        ->and(CertificateStatus::labels()->all())->toContain('Live')
+        ->and(CertificateStatus::toOptions()->get('issued'))->toBe('Live')
+        ->and(CertificateStatus::tryFromLabel('Live'))->toBe(CertificateStatus::Issued);
+});
+
+it('keeps the headline label and host JSON translations for a locale the package does not ship', function (): void {
+    app()->setLocale('de');
+    app('translator')->addLines(['*.Issued' => 'Ausgestellt'], 'de', '*');
+
+    expect(CertificateStatus::Issued->label())->toBe('Ausgestellt')
+        ->and(CertificateStatus::Pending->label())->toBe('Pending');
 });
 
 it('exposes the enums trait surface', function (): void {

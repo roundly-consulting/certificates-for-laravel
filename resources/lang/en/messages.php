@@ -13,6 +13,17 @@ return [
     'provider_reported' => 'The :driver provider reports the certificate for ":domain" as :status.',
     'no_alert_notifiable' => 'No alert notifiable could be resolved for [:domain]. Pass one to monitorExpiry(), set certificates.alerts.notifiable, or associate the certificate with a certifiable owner.',
 
+    'statuses' => [
+        'pending' => 'Pending',
+        'requested' => 'Requested',
+        'issued' => 'Issued',
+        'renewing' => 'Renewing',
+        'renewed' => 'Renewed',
+        'failed' => 'Failed',
+        'expired' => 'Expired',
+        'revoked' => 'Revoked',
+    ],
+
     'commands' => [
         'issuing' => 'Issuing certificate for :domain...',
         'issued' => 'Certificate for :domain is now :status.',

@@ -19,6 +19,14 @@ it('issues a certificate from the command line', function (): void {
         ->toBe(CertificateStatus::Issued);
 });
 
+it('reports the new status by its translated label', function (): void {
+    app()->setLocale('sk');
+
+    $this->artisan('certificates:issue', ['domain' => 'app.example.com', '--driver' => 'array'])
+        ->expectsOutputToContain('Certifikát pre app.example.com má teraz stav „Vydaný“.')
+        ->assertExitCode(0);
+});
+
 it('fails for an invalid domain', function (): void {
     $this->artisan('certificates:issue', ['domain' => 'not a domain'])
         ->assertExitCode(1);

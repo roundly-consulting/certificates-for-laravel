@@ -44,7 +44,7 @@ it('fails loudly when the provider reports the certificate failed', function (Ce
     $this->provider->report = new CertificateStatusReport(status: $reported);
 
     expect(fn () => Certificates::for('bad.example.com')->using('scripted')->issue())
-        ->toThrow(CertificateException::class, 'reports the certificate for "bad.example.com" as '.$reported->value);
+        ->toThrow(CertificateException::class, 'reports the certificate for "bad.example.com" as '.$reported->label().'.');
 
     expect(Certificates::find('bad.example.com'))
         ->status->toBe(CertificateStatus::Failed)
