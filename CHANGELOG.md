@@ -34,6 +34,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 ### Security
 
 - Issuing a certificate whose name collides with another domain's (`a.b.com` and `a-b.com`, or `*.example.com` and `wildcard.example.com`, fold into the same name) now throws a `CertificateException` instead of taking over the other domain's registry row, owner and secret / stored material. The name stays with the domain that registered it first, pruned or not; `Certificates::fake()` refuses the same way.
+- The `acme` driver now refuses a challenge token that is not base64url (RFC 8555 §8.3). The HTTP-01 solver writes the token as a file name, so a malicious CA — or a man in the middle with TLS verification off — could send `../…` and have it overwrite and then delete files outside the challenge path on that disk, such as another certificate's private key.
 
 ## 1.0.2 - 2026-10-04
 

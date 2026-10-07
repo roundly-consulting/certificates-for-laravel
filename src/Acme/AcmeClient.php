@@ -181,6 +181,12 @@ final class AcmeClient
             if (($challenge['type'] ?? null) === $type) {
                 $token = (string) ($challenge['token'] ?? '');
 
+                // RFC 8555 §8.3: base64url characters only. The HTTP-01 solver writes the
+                // token as a file name — anything else (`../`) would reach outside its path.
+                if (preg_match('/^[A-Za-z0-9_-]+$/', $token) !== 1) {
+                    throw AcmeException::challengeFailed($domain, 'the CA sent a challenge token that is not base64url');
+                }
+
                 return new AcmeChallenge(
                     type: $type,
                     domain: $domain,
