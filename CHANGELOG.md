@@ -13,6 +13,8 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - `RenewCertificateJob` now declares a `$timeout` equal to `certificates.lock.locked_for_seconds` (600 seconds by default), so a worker no longer kills an ACME renewal after its own default timeout. Keep your queue connection's `retry_after` above it.
 - `Certificates::expiring()`, the `expiring()` scope, `HasCertificates::expiringCertificates()`, `renewDue()` and `certificates:check` now also include Issued, Renewed and Failed certificates that are already past expiry (they used to stop at `now`). `CertificateExpiring` can therefore carry a negative `daysUntilExpiry`.
 
+- Documentation: the README usage example now runs on the default `kubernetes` driver — `issue()` returns `Requested`, the scheduled `certificates:sync` records the outcome, and the registry is then read and revoked by domain. The old example claimed `Issued` and revoked a `Requested` certificate, which throws.
+
 ### Fixed
 
 - The provisioning lock no longer expires in the middle of an ACME issuance: with the old 5-second default a concurrent `issue()` of the same domain started a second ACME order while the first was still polling.

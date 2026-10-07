@@ -41,7 +41,8 @@ If the models you attach certificates to have UUID/ULID keys, set `CERTIFICATES_
 
 ## Usage
 
-Issue a certificate (one SAN certificate for both hosts) and attach it to its owner:
+Request a certificate (one SAN certificate for both hosts) and attach it to its owner. On the
+default `kubernetes` driver cert-manager issues it in the background:
 
 ```php
 use RoundlyConsulting\Certificates\Facades\Certificates;
@@ -51,21 +52,21 @@ $certificate = Certificates::for('shop.example.com')
     ->owner($tenant)                  // a model using the HasCertificates trait
     ->issue();
 
-$certificate->status;                 // CertificateStatus::Issued
-$certificate->expires_at;             // CarbonImmutable
-$certificate->daysUntilExpiry();      // 90
+$certificate->status;                 // CertificateStatus::Requested (acme, filesystem: Issued)
 ```
 
-Keep the registry renewed — schedule the sweep, or drive it yourself:
+Schedule the sync that records the outcome and the renewal sweep, then read and manage the registry:
 
 ```php
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::command('certificates:renew')->daily();   // everything inside renewal.threshold_days
+Schedule::command('certificates:sync')->everyFiveMinutes();  // Requested → Issued, fires CertificateIssued
+Schedule::command('certificates:renew')->daily();            // everything inside renewal.threshold_days
 
-Certificates::expiring(14);                          // Collection<int, Certificate>, soonest first
-$report = Certificates::renewDue();                  // RenewalReport: renewed, queued, failed
-Certificates::revoke($certificate, 'key compromise');
+Certificates::status('shop.example.com');                    // CertificateStatus::Issued once synced
+Certificates::find('shop.example.com')?->daysUntilExpiry();  // 90
+Certificates::expiring(14);                                  // Collection<int, Certificate>, soonest first
+Certificates::revoke('shop.example.com', 'key compromise');
 ```
 
 <!-- roundly-docs:start -->
