@@ -6,6 +6,10 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 
 ## Unreleased
 
+### Fixed
+
+- The self-signing `filesystem` driver now renews its own certificate for a hostname longer than 64 characters (one without a common name). It told self-signed from CA-issued material by comparing common names, so such a certificate counted as CA-issued, was never re-minted, and `renew()` failed. Self-signed is now read from the full issuer and subject names plus a signature check against the certificate's own key; `ParsedCertificate` gains a `selfSigned` flag.
+
 ## 1.1.0 - 2026-10-07
 
 ### Changed

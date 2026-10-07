@@ -22,6 +22,10 @@ use RoundlyConsulting\Crypto\X509\Certificate;
  *    emits lower-case), and it is only ever compared as a string;
  *  - an issuer with no CN falls back to its organization.
  *
+ * Whether the certificate is self-signed is read from the whole issuer and subject
+ * names plus the signature, never from the common names: a certificate may carry
+ * no CN at all.
+ *
  * Crypto reports the facts; what to do about an expired or unexpected
  * certificate is decided here and in the providers, never there.
  */
@@ -48,7 +52,18 @@ final class CertificateMapper
             issuer: $issuer->commonName ?? $issuer->organization,
             serial: $certificate->serialNumber(),
             fingerprint: strtoupper($certificate->fingerprint()),
+            selfSigned: $this->selfSigned($certificate),
         );
+    }
+
+    /**
+     * RFC 5280 §3.2: self-issued (the issuer name equals the subject name) and verifiable
+     * with the certificate's own public key.
+     */
+    private function selfSigned(Certificate $certificate): bool
+    {
+        return $certificate->issuer()->toString() === $certificate->subject()->toString()
+            && $certificate->isSelfSigned();
     }
 
     /**

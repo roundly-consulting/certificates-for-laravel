@@ -19,6 +19,7 @@ final readonly class ParsedCertificate
         public ?string $issuer = null,
         public ?string $serial = null,
         public ?string $fingerprint = null,
+        public bool $selfSigned = false,
     ) {}
 
     public function isExpired(): bool

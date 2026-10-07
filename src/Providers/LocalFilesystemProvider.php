@@ -84,7 +84,7 @@ final class LocalFilesystemProvider implements CertificateProvider, ProvisionsMu
         }
 
         // Material a real CA issued is never overwritten with a self-signed one.
-        if ($existing !== null && ! $this->selfSigned($existing)) {
+        if ($existing !== null && ! $this->parser->parse($existing->certificatePem)->selfSigned) {
             return;
         }
 
@@ -93,13 +93,6 @@ final class LocalFilesystemProvider implements CertificateProvider, ProvisionsMu
         [$cert, $key] = $this->csr->selfSigned($domains, $this->selfSignedDays);
 
         $this->store->put($name, new StoredCertificate(certificatePem: $cert, privateKeyPem: $key));
-    }
-
-    private function selfSigned(StoredCertificate $material): bool
-    {
-        $parsed = $this->parser->parse($material->certificatePem);
-
-        return $parsed->issuer === $parsed->commonName;
     }
 
     public function status(string $name, string $domain): CertificateStatusReport

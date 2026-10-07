@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Support\CertificateMapper;
+use RoundlyConsulting\Crypto\Testing\TestCertificates;
 
 /**
  * Frozen ParsedCertificate vectors for the committed `leaf` fixture, computed
@@ -85,3 +86,13 @@ it('parses only the first certificate in a bundle', function (): void {
 it('throws on unparseable pem', function (): void {
     (new CertificateMapper)->parse('not a certificate');
 })->throws(CertificateException::class);
+
+it('reads self-signed from the whole names and the signature, not the common names', function (): void {
+    $mapper = new CertificateMapper;
+    $issued = TestCertificates::chain(length: 2, commonName: 'app.com', dnsNames: ['app.com']);
+
+    // org-only has no CN: issuer and subject CN are both absent, yet it signed itself.
+    expect($mapper->parse(fixtureCertificatePem('leaf'))->selfSigned)->toBeTrue()
+        ->and($mapper->parse(fixtureCertificatePem('org-only'))->selfSigned)->toBeTrue()
+        ->and($mapper->parse($issued->leaf()->pem())->selfSigned)->toBeFalse();
+});
