@@ -180,7 +180,7 @@ final class CertificatesFake extends CertificatesManager
 
     public function issueIfMissing(string $domain): Certificate
     {
-        $existing = $this->store[$this->key($domain)] ?? null;
+        $existing = $this->covering($domain);
 
         if ($existing !== null && $existing->isActive()) {
             return $existing;
@@ -202,7 +202,25 @@ final class CertificatesFake extends CertificatesManager
 
     public function status(string $domain, ?string $driver = null): ?CertificateStatus
     {
-        return $this->find($domain, $driver)?->status;
+        return $this->covering($domain, $driver)?->status;
+    }
+
+    /**
+     * @internal as for real: the host's own certificate first, else the newest SAN one listing it
+     */
+    public function covering(string $domain, ?string $driver = null): ?Certificate
+    {
+        if (($own = $this->find($domain, $driver)) !== null) {
+            return $own;
+        }
+
+        foreach (array_reverse($this->store) as $certificate) {
+            if (in_array($this->key($domain), $certificate->domains ?? [], true) && ($driver === null || $certificate->driver === $driver)) {
+                return $certificate;
+            }
+        }
+
+        return null;
     }
 
     public function statusReport(string $domain, ?string $driver = null, bool $fresh = false): ?CertificateStatusReport

@@ -138,11 +138,12 @@ class CertificatesManager
     }
 
     /**
-     * Issue a certificate only when no active one already exists for the domain.
+     * Issue a certificate only when no active one already covers the domain — its own, or a
+     * SAN certificate listing it.
      */
     public function issueIfMissing(string $domain): Certificate
     {
-        $existing = $this->find($domain);
+        $existing = $this->covering($domain);
 
         if ($existing !== null && $existing->isActive()) {
             return $existing;
@@ -179,12 +180,32 @@ class CertificatesManager
     }
 
     /**
-     * Report the current status of a certificate by domain (registry enum), on one driver
-     * when given.
+     * Report the current status of the certificate covering a domain (registry enum) — its
+     * own, or a SAN certificate listing it — on one driver when given.
      */
     public function status(string $domain, ?string $driver = null): ?CertificateStatus
     {
-        return $this->find($domain, $driver)?->status;
+        return $this->covering($domain, $driver)?->status;
+    }
+
+    /**
+     * The registry certificate covering a host: its own row (the host as main domain) first,
+     * else the newest certificate listing it among its SAN domains.
+     *
+     * @internal answers the "is this host covered?" checks — issueIfMissing() and status();
+     *           find(), renew(), revoke() and expire() match the main domain exactly
+     */
+    public function covering(string $domain, ?string $driver = null): ?Certificate
+    {
+        if (! $this->registryAvailable()) {
+            return null;
+        }
+
+        return $this->find($domain, $driver) ?? CertificateModel::class()::on($this->connection)
+            ->coveringDomain($domain)
+            ->when($driver !== null, fn ($query) => $query->forDriver($driver))
+            ->latest('id')
+            ->first();
     }
 
     /**

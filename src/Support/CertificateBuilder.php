@@ -108,7 +108,8 @@ final class CertificateBuilder
 
     public function issueIfMissing(): Certificate
     {
-        $existing = $this->find();
+        // Covered already — by its own certificate or a SAN one listing it — on the driver.
+        $existing = $this->manager->covering($this->domain, $this->driver);
 
         if ($existing !== null && $existing->isActive()) {
             return $existing;

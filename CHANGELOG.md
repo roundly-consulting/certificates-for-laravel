@@ -32,6 +32,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - Hostnames longer than 64 characters can now be issued on the `acme` driver and self-signed on the `filesystem` driver: the CSR's common name is the first domain that fits a common name (64 characters at most), or none, instead of always the first domain, which made OpenSSL refuse the CSR. Every domain is still in the subjectAltName extension.
 - `Certificates::for($domain)->using($driver)->status()` and `->exists()` now read the chosen driver, like `find()` and the lifecycle verbs already did; `status()` reported the domain's newest row on any driver and `exists()` asked the default driver. `Certificates::status()` and `Certificates::exists()` take an optional `$driver` argument, and `Certificates::fake()` honours it.
 - `Certificates::fake()` now records a certificate issued without an explicit driver on the configured default driver (it used `array`) and keeps its `meta`, as a real `issue()` does.
+- `Certificates::issueIfMissing()` (and the builder's), `Certificates::status()` (and the builder's) and `HasCertificates::hasCertificateFor()` now also find a SAN certificate covering the host, so `issueIfMissing('www.shop.example.com')` no longer issues a duplicate next to a certificate for `shop.example.com` + `www.shop.example.com`. `find()`, `certificateFor()`, `renew()`, `revoke()` and `expire()` still match the main domain exactly. `Certificates::fake()` matches.
 
 ### Security
 

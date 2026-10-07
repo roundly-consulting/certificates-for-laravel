@@ -43,9 +43,13 @@ trait HasCertificates
         return $this->certificates()->forDomain($domain)->latest('id')->first();
     }
 
+    /**
+     * Whether one of this model's certificates covers the host — as its main domain or among
+     * its SAN domains. (certificateFor() matches the main domain only.)
+     */
     public function hasCertificateFor(string $domain): bool
     {
-        return $this->certificates()->forDomain($domain)->exists();
+        return $this->certificates()->coveringDomain($domain)->exists();
     }
 
     /**
