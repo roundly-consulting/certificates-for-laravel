@@ -25,8 +25,13 @@ final class FilesystemCertificateStore implements CertificateStore
 
     /**
      * Every file is written to a temporary name first and moved into place only once all of
-     * them are written: a crash or a failed write never leaves a new certificate next to the
-     * old key (a pair status() would still report as issued).
+     * them are written: a crash or a failed write while writing never leaves a new certificate
+     * next to the old key (a pair status() would still report as issued).
+     *
+     * The moves are still one rename per file, not one atomic swap: a crash (or a failed move)
+     * exactly between two of them can leave a mixed set — a new certificate.pem next to the
+     * old private.key, or a new pair next to the old chain.pem — until the certificate is next
+     * written. The window is two renames wide.
      */
     public function put(string $name, StoredCertificate $material): void
     {

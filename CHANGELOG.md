@@ -6,6 +6,10 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 
 ## Unreleased
 
+### Changed
+
+- Documentation: the certificate store's atomic write (`acme` and `filesystem` drivers) still moves its files into place with one rename each, so a crash exactly between two renames can leave a new certificate next to the old private key until the certificate is next written. The store and driver docs now say so.
+
 ### Fixed
 
 - The self-signing `filesystem` driver now renews its own certificate for a hostname longer than 64 characters (one without a common name). It told self-signed from CA-issued material by comparing common names, so such a certificate counted as CA-issued, was never re-minted, and `renew()` failed. Self-signed is now read from the full issuer and subject names plus a signature check against the certificate's own key; `ParsedCertificate` gains a `selfSigned` flag.
