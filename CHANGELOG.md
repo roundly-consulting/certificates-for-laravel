@@ -9,6 +9,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 ### Fixed
 
 - The self-signing `filesystem` driver now renews its own certificate for a hostname longer than 64 characters (one without a common name). It told self-signed from CA-issued material by comparing common names, so such a certificate counted as CA-issued, was never re-minted, and `renew()` failed. Self-signed is now read from the full issuer and subject names plus a signature check against the certificate's own key; `ParsedCertificate` gains a `selfSigned` flag.
+- `Certificates::sync()` / `certificates:sync` no longer brings back a revoked certificate that was pruned: revoke → prune → sync revived the row as `Issued` because sync restores every pruned row the provider still lists. A pruned `Revoked` row now stays revoked and pruned (sync skips it and does not count it); a fresh `issue()` still revives it. Other pruned rows are still restored as fresh registrations.
 
 ## 1.1.0 - 2026-10-07
 

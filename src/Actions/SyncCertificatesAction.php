@@ -22,8 +22,9 @@ use RoundlyConsulting\Certificates\Support\CertificateModel;
  * Pull a driver's live certificates into the registry, one row per (driver, name).
  * Providers that report status also refresh status, expiry, issuer, serial and fingerprint
  * (a Pending report never demotes a Requested/Renewing row); for the rest a new — or
- * revived pruned — row starts as Issued and an existing row keeps its status. A live
- * Revoked row stays Revoked whatever the provider reports.
+ * revived pruned — row starts as Issued and an existing row keeps its status. A Revoked
+ * row stays Revoked whatever the provider reports, and a pruned Revoked row stays pruned
+ * (sync skips it).
  *
  * Sync also settles what was still in flight, completing the lifecycle the way issue() and
  * renew() do: Requested → Issued sets issued_at and fires CertificateIssued; Renewing →
@@ -57,6 +58,12 @@ final readonly class SyncCertificatesAction
                 'name' => $remote->name,
             ]);
             $revived = $model->trashed();
+
+            // A pruned revocation is still a revocation: the backend keeps the material, so
+            // listing it never brings the row back — only a fresh issue() does.
+            if ($revived && $model->status === CertificateStatus::Revoked) {
+                continue;
+            }
 
             if ($revived) {
                 $model->forceFill([$model->getDeletedAtColumn() => null]);
@@ -156,7 +163,8 @@ final readonly class SyncCertificatesAction
     {
         // Revoked is terminal and registry-only: the backend still holds the material, so what
         // it reports never overrides the decision — only a fresh issue() revives the row. (A
-        // pruned row a sync revives is a fresh registration, like a new one.)
+        // pruned row a sync revives is a fresh registration, like a new one; a pruned Revoked
+        // row is never revived — execute() skips it.)
         if ($model->exists && ! $revived && $model->status === CertificateStatus::Revoked) {
             return CertificateStatus::Revoked;
         }

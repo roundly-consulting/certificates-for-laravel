@@ -56,7 +56,9 @@ it('restores a pruned row the provider still reports when syncing', function ():
         public function generate(string $name, string $domain): void {}
     });
 
-    Certificate::withTrashed()->whereKey($this->pruned->id)->update(['driver' => 'listing']);
+    // A pruned Revoked row stays pruned through a sync (SyncKeepsPrunedRevokedTest); any
+    // other pruned dead end the provider still lists comes back as a fresh registration.
+    Certificate::withTrashed()->whereKey($this->pruned->id)->update(['driver' => 'listing', 'status' => CertificateStatus::Expired->value]);
 
     expect(Certificates::sync('listing'))->toBe(1)
         ->and(Certificates::find('pruned.example.com'))
