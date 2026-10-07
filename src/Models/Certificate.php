@@ -256,7 +256,7 @@ class Certificate extends Model
 
     /**
      * Certificates whose live certificate runs out within `$days` (default:
-     * `certificates.renewal.threshold_days`): Issued, Renewed — and Failed, since a failed
+     * `certificates.renewal.threshold_days`) or already has: Issued, Renewed — and Failed, since a failed
      * renewal leaves the old certificate running out with nothing renewing it, as does a
      * renewal that was interrupted and left the row stuck in Renewing.
      *
@@ -275,7 +275,9 @@ class Certificate extends Model
                 });
         })
             ->whereNotNull('expires_at')
-            ->whereBetween('expires_at', [CarbonImmutable::now(), CarbonImmutable::now()->addDays($days)]);
+            // No lower bound: a certificate that already ran out while its renewal kept
+            // failing is the one most in need of the next attempt.
+            ->where('expires_at', '<=', CarbonImmutable::now()->addDays($days));
     }
 
     /**

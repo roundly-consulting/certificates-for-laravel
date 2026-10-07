@@ -226,7 +226,7 @@ final class CertificatesFake extends CertificatesManager
             $this->store,
             static fn (Certificate $certificate): bool => ($certificate->status->isActive() || $certificate->status === CertificateStatus::Failed || $certificate->isStaleRenewal())
                 && $certificate->expires_at !== null
-                && $certificate->expires_at->between(CarbonImmutable::now(), $until)
+                && $certificate->expires_at->lessThanOrEqualTo($until)
                 && ($driver === null || $certificate->driver === $driver),
         );
 

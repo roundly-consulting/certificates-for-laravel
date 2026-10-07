@@ -14,9 +14,9 @@ use RoundlyConsulting\Certificates\Support\CertificateModel;
 use Throwable;
 
 /**
- * Renew every certificate expiring within the threshold — Issued, Renewed, or Failed by an
- * earlier attempt (default:
- * `certificates.renewal.threshold_days`). CertificateExpiring fires for each; each one is
+ * Renew every certificate expiring within the threshold (default:
+ * `certificates.renewal.threshold_days`) or already past expiry — Issued, Renewed, or Failed
+ * by an earlier attempt. CertificateExpiring fires for each; each one is
  * then renewed inline, or — with `$queue` — handed to RenewCertificateJob.
  *
  * Each certificate is attempted independently: one that fails is reported (and handed to
