@@ -46,7 +46,10 @@ final class AcmeProvider implements CertificateProvider, ProvisionsMultipleDomai
                     return null;
                 }
 
-                return new RemoteCertificate($name, $this->parser->parse($material->certificatePem)->commonName);
+                $parsed = $this->parser->parse($material->certificatePem);
+
+                // A certificate may carry no common name (its SAN extension names the hosts).
+                return new RemoteCertificate($name, $parsed->commonName !== '' ? $parsed->commonName : ($parsed->subjectAltNames[0] ?? ''));
             })
             ->filter()
             ->values();
