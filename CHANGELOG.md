@@ -34,6 +34,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - `Certificates::fake()` now records a certificate issued without an explicit driver on the configured default driver (it used `array`) and keeps its `meta`, as a real `issue()` does.
 - `Certificates::issueIfMissing()` (and the builder's), `Certificates::status()` (and the builder's) and `HasCertificates::hasCertificateFor()` now also find a SAN certificate covering the host, so `issueIfMissing('www.shop.example.com')` no longer issues a duplicate next to a certificate for `shop.example.com` + `www.shop.example.com`. `find()`, `certificateFor()`, `renew()`, `revoke()` and `expire()` still match the main domain exactly. `Certificates::fake()` matches.
 - `certificates:sync` on the `acme` and `filesystem` drivers now records a certificate that has no common name under its first subjectAltName domain; it used to record an empty domain.
+- The certificate store (`acme` and `filesystem` drivers) now writes a certificate's files to temporary names and moves them into place only once all are written, so a crash or failed write no longer leaves a new certificate next to the old private key. A write the disk reports as failed now throws `CertificateException` instead of being ignored.
 
 ### Security
 

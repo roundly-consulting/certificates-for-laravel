@@ -50,6 +50,11 @@ class CertificateException extends Exception
         return new self((string) trans('certificates::messages.name_taken', ['name' => $name, 'domain' => $domain]));
     }
 
+    public static function storeFailed(string $name): self
+    {
+        return new self((string) trans('certificates::messages.store_failed', ['name' => $name]));
+    }
+
     public static function noMaterial(string $name): self
     {
         return new self((string) trans('certificates::messages.no_material', ['name' => $name]));

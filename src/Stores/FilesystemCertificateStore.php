@@ -6,8 +6,11 @@ namespace RoundlyConsulting\Certificates\Stores;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RoundlyConsulting\Certificates\Contracts\CertificateStore;
 use RoundlyConsulting\Certificates\DataTransferObjects\StoredCertificate;
+use RoundlyConsulting\Certificates\Exceptions\CertificateException;
+use Throwable;
 
 /**
  * Stores certificate material as PEM files on a Laravel Storage disk. Each
@@ -20,17 +23,47 @@ final class FilesystemCertificateStore implements CertificateStore
         private readonly string $path = 'certificates',
     ) {}
 
+    /**
+     * Every file is written to a temporary name first and moved into place only once all of
+     * them are written: a crash or a failed write never leaves a new certificate next to the
+     * old key (a pair status() would still report as issued).
+     */
     public function put(string $name, StoredCertificate $material): void
     {
         $disk = $this->disk();
         $base = $this->base($name);
+        $suffix = '.'.Str::random(12).'.tmp';
 
-        $disk->put($base.'/certificate.pem', $material->certificatePem);
-        $disk->put($base.'/private.key', $material->privateKeyPem);
+        $files = ['certificate.pem' => $material->certificatePem, 'private.key' => $material->privateKeyPem];
+        $chain = $material->chainPem !== null && trim($material->chainPem) !== '';
 
-        if ($material->chainPem !== null && trim($material->chainPem) !== '') {
-            $disk->put($base.'/chain.pem', $material->chainPem);
-        } else {
+        if ($chain) {
+            $files['chain.pem'] = (string) $material->chainPem;
+        }
+
+        $written = [];
+
+        try {
+            foreach ($files as $file => $contents) {
+                if ($disk->put($base.'/'.$file.$suffix, $contents) === false) {
+                    throw CertificateException::storeFailed($name);
+                }
+
+                $written[] = $base.'/'.$file.$suffix;
+            }
+        } catch (Throwable $e) {
+            $disk->delete($written);
+
+            throw $e;
+        }
+
+        foreach (array_keys($files) as $file) {
+            if ($disk->move($base.'/'.$file.$suffix, $base.'/'.$file) === false) {
+                throw CertificateException::storeFailed($name);
+            }
+        }
+
+        if (! $chain) {
             $disk->delete($base.'/chain.pem');
         }
     }
