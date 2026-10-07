@@ -214,6 +214,11 @@ final class AcmeClient
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
             $response = $this->signedRequest($authorizationUrl, '');
 
+            // An error's problem document is no authorization: say what the CA said, now.
+            if ($response->failed()) {
+                throw AcmeException::challengeFailed($domain, $this->problem($response));
+            }
+
             /** @var array<string, mixed> $body */
             $body = $response->json();
             $status = (string) ($body['status'] ?? 'pending');
@@ -234,7 +239,11 @@ final class AcmeClient
         throw AcmeException::challengeFailed($domain, 'timed out waiting for validation');
     }
 
-    public function finalize(string $finalizeUrl, string $csrDer): AcmeOrder
+    /**
+     * @param  string|null  $orderUrl  the order's URL from newOrder — RFC 8555 §7.4 does not
+     *                                 require a Location header on the finalize response
+     */
+    public function finalize(string $finalizeUrl, string $csrDer, ?string $orderUrl = null): AcmeOrder
     {
         $response = $this->signedRequest($finalizeUrl, ['csr' => Base64Url::encode($csrDer)]);
 
@@ -242,13 +251,20 @@ final class AcmeClient
             throw AcmeException::finalizeFailed((string) $response->body());
         }
 
-        return $this->orderFromResponse($response->header('Location'), $response);
+        $location = $response->header('Location');
+
+        return $this->orderFromResponse($location !== '' ? $location : (string) $orderUrl, $response);
     }
 
     public function pollOrder(string $orderUrl, int $attempts, int $seconds): AcmeOrder
     {
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
             $response = $this->signedRequest($orderUrl, '');
+
+            if ($response->failed()) {
+                throw AcmeException::finalizeFailed($this->problem($response));
+            }
+
             $order = $this->orderFromResponse($orderUrl, $response);
 
             if ($order->status === 'valid') {
@@ -355,6 +371,16 @@ final class AcmeClient
             status: (string) ($body['status'] ?? 'pending'),
             certificateUrl: isset($body['certificate']) ? (string) $body['certificate'] : null,
         );
+    }
+
+    /**
+     * The `detail` of an RFC 7807 problem document, or the raw body when there is none.
+     */
+    private function problem(Response $response): string
+    {
+        $detail = $response->json('detail');
+
+        return is_string($detail) && $detail !== '' ? $detail : (string) $response->body();
     }
 
     private function endpoint(string $key): string

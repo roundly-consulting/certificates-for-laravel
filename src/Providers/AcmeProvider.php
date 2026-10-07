@@ -103,7 +103,7 @@ final class AcmeProvider implements CertificateProvider, ProvisionsMultipleDomai
         $key = $this->csr->newKey();
         $csrDer = $this->csr->forDomains($domains, $key);
 
-        $finalized = $this->client->finalize($order->finalizeUrl, $csrDer);
+        $finalized = $this->client->finalize($order->finalizeUrl, $csrDer, $order->orderUrl);
         $completed = $this->client->pollOrder($finalized->orderUrl, $this->pollAttempts, $this->pollSeconds);
 
         $pem = $this->client->downloadCertificate((string) $completed->certificateUrl);
