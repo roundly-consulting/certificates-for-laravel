@@ -164,7 +164,8 @@ final class KubernetesProvider implements CertificateProvider, ProvisionsMultipl
      * The Ingress with a TLS entry for `$name` covering exactly `$domains`, and a rule for each
      * host; null when it already has both. A re-issue with a changed SAN set rewrites the
      * existing entry's hosts — the cluster must secure what the registry records. Rules are
-     * only ever added: a host dropped from the certificate may still be routed on purpose.
+     * only ever added, and only for hosts the Ingress does not route yet: a host dropped from
+     * the certificate may still be routed on purpose.
      *
      * @param  array<string, mixed>  $schema
      * @param  list<string>  $domains
@@ -188,26 +189,24 @@ final class KubernetesProvider implements CertificateProvider, ProvisionsMultipl
             }
         }
 
+        // A host the Ingress already routes keeps its rule as it is, whether or not this
+        // certificate had a TLS entry yet: a second rule for the same host is never added.
+        $routed = array_map(static fn (array $rule): mixed => $rule['host'] ?? null, $rules);
+        $missing = array_values(array_filter(
+            array_unique($domains),
+            static fn (string $domain): bool => ! in_array($domain, $routed, true),
+        ));
+
         if ($existing === null) {
             $tls[] = ['hosts' => $domains, 'secretName' => $name];
-
-            foreach ($domains as $domain) {
-                $rules[] = $this->ruleFor($domain);
-            }
+        } elseif ($this->sameHosts($tls[$existing]['hosts'] ?? [], $domains) && $missing === []) {
+            return null;
         } else {
-            $hosts = $tls[$existing]['hosts'] ?? [];
-            $routed = array_map(static fn (array $rule): mixed => $rule['host'] ?? null, $rules);
-            $missing = array_values(array_filter($domains, static fn (string $domain): bool => ! in_array($domain, $routed, true)));
-
-            if ($this->sameHosts($hosts, $domains) && $missing === []) {
-                return null;
-            }
-
             $tls[$existing]['hosts'] = $domains;
+        }
 
-            foreach ($missing as $domain) {
-                $rules[] = $this->ruleFor($domain);
-            }
+        foreach ($missing as $domain) {
+            $rules[] = $this->ruleFor($domain);
         }
 
         $schema['spec']['tls'] = $tls;

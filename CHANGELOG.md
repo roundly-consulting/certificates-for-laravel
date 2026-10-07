@@ -10,6 +10,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 
 - The self-signing `filesystem` driver now renews its own certificate for a hostname longer than 64 characters (one without a common name). It told self-signed from CA-issued material by comparing common names, so such a certificate counted as CA-issued, was never re-minted, and `renew()` failed. Self-signed is now read from the full issuer and subject names plus a signature check against the certificate's own key; `ParsedCertificate` gains a `selfSigned` flag.
 - `Certificates::sync()` / `certificates:sync` no longer brings back a revoked certificate that was pruned: revoke → prune → sync revived the row as `Issued` because sync restores every pruned row the provider still lists. A pruned `Revoked` row now stays revoked and pruned (sync skips it and does not count it); a fresh `issue()` still revives it. Other pruned rows are still restored as fresh registrations.
+- Issuing a certificate on the `kubernetes` driver no longer adds a second Ingress rule for a host the Ingress already routes: a new TLS entry appended a rule for every host of the certificate, leaving duplicate host rules. The existing rule is kept as it is; rules are added only for hosts not routed yet.
 
 ## 1.1.0 - 2026-10-07
 
