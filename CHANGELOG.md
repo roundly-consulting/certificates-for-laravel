@@ -6,6 +6,8 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 
 ## Unreleased
 
+## 1.1.1 - 2026-10-07
+
 ### Changed
 
 - Documentation: the certificate store's atomic write (`acme` and `filesystem` drivers) still moves its files into place with one rename each, so a crash exactly between two renames can leave a new certificate next to the old private key until the certificate is next written. The store and driver docs now say so.
