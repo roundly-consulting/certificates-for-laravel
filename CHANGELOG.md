@@ -13,6 +13,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 ### Fixed
 
 - The provisioning lock no longer expires in the middle of an ACME issuance: with the old 5-second default a concurrent `issue()` of the same domain started a second ACME order while the first was still polling.
+- `Certificates::renew()` now holds the certificate's provisioning lock and moves the row to `Renewing` only while it still has the status the caller read: concurrent renewals, a renewal racing `issue()` or a renewal of a stale model throw `ProvisioningInProgressException` instead of renewing twice. A `RenewCertificateJob` queued by `renewDue(queue: true)` now does nothing once the certificate is no longer due, so overlapping sweeps no longer re-renew a certificate that was just renewed (`renewLater()` jobs still always renew).
 
 ### Security
 

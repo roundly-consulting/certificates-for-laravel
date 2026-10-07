@@ -36,7 +36,10 @@ final readonly class RenewDueCertificatesAction
 
     public function execute(?int $thresholdDays = null, bool $queue = false, ?string $connection = null): RenewalReport
     {
-        $certificates = CertificateModel::class()::on($connection)
+        $model = CertificateModel::class();
+        $thresholdDays ??= $model::thresholdDays();
+
+        $certificates = $model::on($connection)
             ->expiring($thresholdDays)
             ->orderBy('expires_at')
             ->get();
@@ -50,7 +53,7 @@ final readonly class RenewDueCertificatesAction
                 Event::dispatch(new CertificateExpiring($certificate, $certificate->daysUntilExpiry() ?? 0));
 
                 if ($queue) {
-                    $this->bus->dispatch(new RenewCertificateJob($certificate->id, $connection));
+                    $this->bus->dispatch(new RenewCertificateJob($certificate->id, $connection, $thresholdDays));
                     $queued[] = $certificate;
 
                     continue;

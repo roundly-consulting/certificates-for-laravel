@@ -12,8 +12,10 @@ use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Events\CertificateFailed;
 use RoundlyConsulting\Certificates\Events\CertificateRenewed;
 use RoundlyConsulting\Certificates\Exceptions\CertificateException;
+use RoundlyConsulting\Certificates\Exceptions\ProvisioningInProgressException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CachedStatusResolver;
+use RoundlyConsulting\Certificates\Support\ProvisioningLock;
 use Throwable;
 
 /**
@@ -24,6 +26,11 @@ use Throwable;
  * is a failed renewal. When the renewal fails the row moves to Failed and CertificateFailed
  * fires before the exception is rethrown — it is never left stuck in Renewing, and a Failed
  * row stays renewable (renewDue() retries it).
+ *
+ * A renewal holds the certificate's provisioning lock (the one issue() takes), and the row
+ * moves to Renewing only if it is still in the status this process read: a concurrent
+ * renewal, or a model loaded before another process renewed it, throws
+ * ProvisioningInProgressException instead of renewing twice.
  *
  * Reach it through `Certificates::renew()` / `Certificates::for($domain)->renew()`.
  */
@@ -40,9 +47,24 @@ final readonly class RenewCertificateAction
             throw CertificateException::illegalTransition($certificate->status, CertificateStatus::Renewing);
         }
 
+        $lock = ProvisioningLock::for($certificate->name);
+
+        if (! $lock->get()) {
+            throw ProvisioningInProgressException::forDomain($certificate->domain);
+        }
+
+        try {
+            return $this->renew($certificate);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function renew(Certificate $certificate): Certificate
+    {
         $previousFingerprint = $certificate->fingerprint;
 
-        $certificate->forceFill(['status' => CertificateStatus::Renewing])->save();
+        $this->claim($certificate);
 
         try {
             $provider = $this->manager->provider($certificate->driver);
@@ -90,5 +112,30 @@ final readonly class RenewCertificateAction
         Event::dispatch(new CertificateRenewed($certificate));
 
         return $certificate;
+    }
+
+    /**
+     * Move the row to Renewing in one conditional update: only while it still holds the
+     * status this process read. A model loaded before another process renewed (or
+     * re-issued) the certificate must not renew it a second time.
+     */
+    private function claim(Certificate $certificate): void
+    {
+        $values = ['status' => CertificateStatus::Renewing];
+
+        if ($certificate->usesTimestamps()) {
+            $values[$certificate->getUpdatedAtColumn()] = $certificate->freshTimestamp();
+        }
+
+        $claimed = $certificate->newQuery()
+            ->whereKey($certificate->getKey())
+            ->where('status', $certificate->getOriginal('status'))
+            ->update($values);
+
+        if ($claimed !== 1) {
+            throw ProvisioningInProgressException::forDomain($certificate->domain);
+        }
+
+        $certificate->forceFill($values)->syncOriginalAttributes(array_keys($values));
     }
 }
