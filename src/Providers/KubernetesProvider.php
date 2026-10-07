@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Certificates\Providers;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Certificates\Contracts\CertificateProvider;
@@ -28,6 +29,11 @@ use SensitiveParameter;
  */
 final class KubernetesProvider implements CertificateProvider, ProvisionsMultipleDomains, ReportsCertificateStatus
 {
+    /**
+     * How many times an Ingress write that lost a race (409 Conflict) is re-read and retried.
+     */
+    private const CONFLICT_ATTEMPTS = 5;
+
     /**
      * @param  string  $baseUrl  Kubernetes API server base URL (e.g. https://kubernetes.default.svc)
      * @param  string  $token  Bearer token for the service account
@@ -126,16 +132,32 @@ final class KubernetesProvider implements CertificateProvider, ProvisionsMultipl
      */
     public function generateMany(string $name, array $domains): void
     {
-        $ingress = $this->fetchIngress();
+        for ($attempt = 1; ; $attempt++) {
+            $ingress = $this->fetchIngress();
 
-        $schema = $this->withCertificate($ingress ?? $this->baseIngressSchema(), $name, $domains);
+            $schema = $this->withCertificate($ingress ?? $this->baseIngressSchema(), $name, $domains);
 
-        if ($schema === null) {
-            // The Ingress already secures and routes exactly these hosts; nothing to do.
+            if ($schema === null) {
+                // The Ingress already secures and routes exactly these hosts; nothing to do.
+                return;
+            }
+
+            $response = $this->applyIngress($schema, $ingress !== null);
+
+            // Every certificate shares this Ingress, and the provisioning lock is per
+            // certificate: another domain's issuance may have changed it since it was read
+            // (the body carries the resourceVersion read, so the API refuses the stale write)
+            // or created it first. Re-read and re-apply rather than lose either change.
+            if ($response->status() === 409 && $attempt < self::CONFLICT_ATTEMPTS) {
+                continue;
+            }
+
+            if ($response->failed()) {
+                throw KubernetesApiException::fromResponse('applying ingress for '.$name, $response);
+            }
+
             return;
         }
-
-        $this->applyIngress($name, $schema, $ingress !== null);
     }
 
     /**
@@ -292,17 +314,13 @@ final class KubernetesProvider implements CertificateProvider, ProvisionsMultipl
     /**
      * @param  array<string, mixed>  $schema
      */
-    private function applyIngress(string $name, array $schema, bool $exists): void
+    private function applyIngress(array $schema, bool $exists): Response
     {
-        $response = $exists
+        return $exists
             ? $this->request()
                 ->withHeaders(['Content-Type' => 'application/merge-patch+json'])
                 ->patch($this->ingressPath().'/'.$this->ingressName, $schema)
             : $this->request()->post($this->ingressPath(), $schema);
-
-        if ($response->failed()) {
-            throw KubernetesApiException::fromResponse('applying ingress for '.$name, $response);
-        }
     }
 
     /**
