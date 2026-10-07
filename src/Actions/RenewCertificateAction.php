@@ -22,8 +22,9 @@ use Throwable;
  * Renew one registry certificate through its own driver.
  *
  * The row moves Issued/Renewed/Failed → Renewing → Renewed. The provider's own report is
- * the proof: a status that is not live, or the very same certificate (same fingerprint),
- * is a failed renewal. When the renewal fails the row moves to Failed and CertificateFailed
+ * the proof: a status that is not live, the very same certificate (same fingerprint), or —
+ * when the provider reports no fingerprint — an expiry no later than before, is a failed
+ * renewal. When the renewal fails the row moves to Failed and CertificateFailed
  * fires before the exception is rethrown — it is never left stuck in Renewing, and a Failed
  * row stays renewable (renewDue() retries it).
  *
@@ -64,6 +65,7 @@ final readonly class RenewCertificateAction
     private function renew(Certificate $certificate): Certificate
     {
         $previousFingerprint = $certificate->fingerprint;
+        $previousExpiresAt = $certificate->expires_at;
 
         $this->claim($certificate);
 
@@ -90,6 +92,14 @@ final readonly class RenewCertificateAction
             // Same fingerprint = the same certificate: nothing was renewed, whatever the
             // provider call returned (e.g. imported material nobody replaced).
             if ($report?->fingerprint !== null && $report->fingerprint === $previousFingerprint) {
+                throw CertificateException::notRenewed($certificate->driver, $certificate->domain);
+            }
+
+            // Without a fingerprint the expiry is the proof: a renewed certificate runs out
+            // later than the one it replaces. cert-manager renews inside the cluster and keeps
+            // reporting Ready while its renewal fails, so an unchanged notAfter is no renewal.
+            if ($report !== null && $report->fingerprint === null && $report->expiresAt !== null
+                && $previousExpiresAt !== null && ! $report->expiresAt->greaterThan($previousExpiresAt)) {
                 throw CertificateException::notRenewed($certificate->driver, $certificate->domain);
             }
         } catch (Throwable $e) {
