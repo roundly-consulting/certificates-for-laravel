@@ -86,7 +86,9 @@ final class CertificateExpiryCheck extends Check
         $worst = CheckResult::ok((string) trans('certificates::messages.alerts.registry_ok'));
 
         // Every certificate that is down or about to be: Issued/Renewed ones inside the
-        // warning window — including any already past expiry — plus Failed and Expired ones.
+        // warning window — including any already past expiry — plus Failed and Expired ones,
+        // and any still in flight (Pending, Requested, Renewing) past its expiry: a renewal or
+        // issuance that never finished leaves nothing live behind it.
         // Revoked rows are a deliberate decision (alerted once, via CertificateRevoked),
         // not something the registry signal should stay red over.
         CertificateModel::class()::query()
@@ -98,6 +100,10 @@ final class CertificateExpiryCheck extends Check
                                 $query->whereNull('expires_at')
                                     ->orWhere('expires_at', '<=', now()->addDays($warningDays));
                             });
+                    })
+                    ->orWhere(function ($query): void {
+                        $query->whereIn('status', [CertificateStatus::Pending, CertificateStatus::Requested, CertificateStatus::Renewing])
+                            ->where('expires_at', '<=', now());
                     });
             })
             ->orderBy('expires_at')

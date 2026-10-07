@@ -18,6 +18,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - `Certificates::renew()` now holds the certificate's provisioning lock and moves the row to `Renewing` only while it still has the status the caller read: concurrent renewals, a renewal racing `issue()` or a renewal of a stale model throw `ProvisioningInProgressException` instead of renewing twice. A `RenewCertificateJob` queued by `renewDue(queue: true)` now does nothing once the certificate is no longer due, so overlapping sweeps no longer re-renew a certificate that was just renewed (`renewLater()` jobs still always renew).
 - A certificate whose renewal was interrupted (a queue timeout during ACME polling, a deploy) no longer stays in `Renewing` forever: once the row has been untouched for longer than `certificates.lock.locked_for_seconds`, `expiring()`, `renewDue()`, `renew()` and `renewLater()` treat it as renewable again, and `Certificates::fake()` does the same.
 - A certificate whose renewal kept failing is now still renewed after it has expired: `renewDue()` used to drop it from the due set exactly at expiry, so the retries stopped when they mattered most. `Certificates::fake()` matches.
+- The registry-wide `CertificateExpiryCheck` now fails for a certificate still in flight (`Pending`, `Requested`, `Renewing`) that is past its expiry; such a row used to read as healthy while its per-certificate check failed.
 
 ### Security
 
