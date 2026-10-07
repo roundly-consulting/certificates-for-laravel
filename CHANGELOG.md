@@ -12,7 +12,6 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - `Certificates::sync()` / `certificates:sync` now completes the lifecycle of what was still in flight: a `Requested` row the provider reports issued becomes `Issued` with `issued_at` set and fires `CertificateIssued`; a `Renewing` row whose provider holds a new certificate becomes `Renewed` with `last_renewed_at` and fires `CertificateRenewed`; an existing row the provider reports failed fires `CertificateFailed` (so lifecycle alerts fire). Sync used to fire no events. Rows sync discovers or revives still fire nothing.
 - `RenewCertificateJob` now declares a `$timeout` equal to `certificates.lock.locked_for_seconds` (600 seconds by default), so a worker no longer kills an ACME renewal after its own default timeout. Keep your queue connection's `retry_after` above it.
 - `Certificates::expiring()`, the `expiring()` scope, `HasCertificates::expiringCertificates()`, `renewDue()` and `certificates:check` now also include Issued, Renewed and Failed certificates that are already past expiry (they used to stop at `now`). `CertificateExpiring` can therefore carry a negative `daysUntilExpiry`.
-
 - Documentation: the README usage example now runs on the default `kubernetes` driver — `issue()` returns `Requested`, the scheduled `certificates:sync` records the outcome, and the registry is then read and revoked by domain. The old example claimed `Issued` and revoked a `Requested` certificate, which throws.
 
 ### Fixed
@@ -28,6 +27,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - `Certificates::sync()` / `certificates:sync` no longer un-revokes a certificate: a `Revoked` row stays `Revoked` whatever the provider reports, since revocation is recorded in the registry only. A fresh `issue()` still revives it.
 - On the default `kubernetes` driver, where issuance completes asynchronously, `CertificateIssued` and `CertificateFailed` now fire and `issued_at` is set once `certificates:sync` sees the outcome; before, no issuance event ever fired on that driver and `issued_at` stayed empty.
 - Expiry alerts for a certificate on another database connection now evaluate that certificate: `certificates:check --connection=…`, the lifecycle alert listener and `monitorExpiry()` schedules used to load the same id from the default connection (another certificate, or "skipped"). `CertificateExpiryCheck` takes a `connection` argument (or `connection` meta on a scheduled check), and `monitorExpiry()` records it.
+- The `acme` driver no longer re-solves an authorization the CA already holds as valid (a CA reuses recently validated authorizations): issuance used to fail with "no dns-01 challenge offered" after switching solver type, and re-POSTed the valid challenge otherwise. An authorization that is `invalid`, `deactivated`, `expired` or `revoked` now fails at once instead of being solved. New `AcmeClient::pendingChallenge()`.
 
 ### Security
 

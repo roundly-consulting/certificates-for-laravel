@@ -78,8 +78,13 @@ final class AcmeProvider implements CertificateProvider, ProvisionsMultipleDomai
         $order = $this->client->newOrder($domains);
 
         foreach ($order->authorizationUrls as $authorizationUrl) {
-            // The solver decides which challenge is answered: a DNS solver gets dns-01.
-            $challenge = $this->client->challengeFor($authorizationUrl, $this->solver->type());
+            // The solver decides which challenge is answered: a DNS solver gets dns-01. An
+            // authorization the CA already holds as valid has nothing left to solve.
+            $challenge = $this->client->pendingChallenge($authorizationUrl, $this->solver->type());
+
+            if ($challenge === null) {
+                continue;
+            }
 
             try {
                 $this->solver->solve($challenge);

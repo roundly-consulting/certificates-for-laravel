@@ -124,6 +124,37 @@ final class AcmeClient
      */
     public function challengeFor(string $authorizationUrl, string $type): AcmeChallenge
     {
+        return $this->challengeFrom($this->authorization($authorizationUrl), $authorizationUrl, $type);
+    }
+
+    /**
+     * The challenge of `$type` still to solve for an authorization, or null when the CA
+     * already holds the authorization as valid — a reused one (RFC 8555 §7.1.4) lists only
+     * the challenge that validated it, so there is nothing to solve whatever the solver's
+     * type. An authorization that can no longer be satisfied (invalid, deactivated, expired,
+     * revoked) throws rather than being solved.
+     */
+    public function pendingChallenge(string $authorizationUrl, string $type): ?AcmeChallenge
+    {
+        $body = $this->authorization($authorizationUrl);
+        $status = (string) ($body['status'] ?? 'pending');
+
+        if ($status === 'valid') {
+            return null;
+        }
+
+        if ($status !== 'pending') {
+            throw AcmeException::challengeFailed((string) ($body['identifier']['value'] ?? ''), "authorization {$status}");
+        }
+
+        return $this->challengeFrom($body, $authorizationUrl, $type);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function authorization(string $authorizationUrl): array
+    {
         $response = $this->signedRequest($authorizationUrl, '');
 
         if ($response->failed()) {
@@ -133,6 +164,14 @@ final class AcmeClient
         /** @var array<string, mixed> $body */
         $body = $response->json();
 
+        return $body;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    private function challengeFrom(array $body, string $authorizationUrl, string $type): AcmeChallenge
+    {
         $domain = (string) ($body['identifier']['value'] ?? '');
 
         /** @var list<array<string, mixed>> $challenges */
