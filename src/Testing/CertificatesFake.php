@@ -118,9 +118,9 @@ final class CertificatesFake extends CertificatesManager
         ));
     }
 
-    public function exists(string $domain): bool
+    public function exists(string $domain, ?string $driver = null): bool
     {
-        return isset($this->store[$this->key($domain)]);
+        return $this->find($domain, $driver) !== null;
     }
 
     public function generate(string $domain): bool
@@ -198,9 +198,9 @@ final class CertificatesFake extends CertificatesManager
         return $certificate;
     }
 
-    public function status(string $domain): ?CertificateStatus
+    public function status(string $domain, ?string $driver = null): ?CertificateStatus
     {
-        return $this->find($domain)?->status;
+        return $this->find($domain, $driver)?->status;
     }
 
     public function statusReport(string $domain, ?string $driver = null, bool $fresh = false): ?CertificateStatusReport

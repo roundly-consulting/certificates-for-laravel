@@ -17,8 +17,9 @@ use RoundlyConsulting\Certificates\Models\Certificate;
  * `Certificates::for($domain)` — the handle for one domain (or a SAN set led by its
  * first domain). Configure and issue a certificate fluently, read its state, or run a
  * lifecycle verb on its registry row. Every call goes through CertificatesManager, so
- * `Certificates::fake()` records it; `using($driver)` also scopes the row lookup, so a
- * handle never acts on another driver's row for the same domain.
+ * `Certificates::fake()` records it; `using($driver)` also scopes the row lookup and the
+ * reads (find, status, exists, statusReport), so a handle never acts on or reports another
+ * driver's certificate for the same domain.
  */
 final class CertificateBuilder
 {
@@ -118,12 +119,12 @@ final class CertificateBuilder
 
     public function exists(): bool
     {
-        return $this->manager->exists($this->domain);
+        return $this->manager->exists($this->domain, $this->driver);
     }
 
     public function status(): ?CertificateStatus
     {
-        return $this->manager->status($this->domain);
+        return $this->manager->status($this->domain, $this->driver);
     }
 
     public function statusReport(): ?CertificateStatusReport

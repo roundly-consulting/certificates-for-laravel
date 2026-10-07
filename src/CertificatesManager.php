@@ -87,11 +87,12 @@ class CertificatesManager
     }
 
     /**
-     * Determine whether a certificate already exists for the given domain.
+     * Determine whether a certificate already exists for the given domain on a driver
+     * (default when null).
      */
-    public function exists(string $domain): bool
+    public function exists(string $domain, ?string $driver = null): bool
     {
-        return $this->providers->provider()->exists($this->certificateName($domain), $domain);
+        return $this->providers->provider($driver)->exists($this->certificateName($domain), $domain);
     }
 
     /**
@@ -178,11 +179,12 @@ class CertificatesManager
     }
 
     /**
-     * Report the current status of a certificate by domain (registry enum).
+     * Report the current status of a certificate by domain (registry enum), on one driver
+     * when given.
      */
-    public function status(string $domain): ?CertificateStatus
+    public function status(string $domain, ?string $driver = null): ?CertificateStatus
     {
-        return $this->find($domain)?->status;
+        return $this->find($domain, $driver)?->status;
     }
 
     /**
