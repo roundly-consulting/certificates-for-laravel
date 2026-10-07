@@ -9,11 +9,17 @@ use RoundlyConsulting\Certificates\Exceptions\AcmeException;
 
 /**
  * Generates Certificate Signing Requests (and self-signed certificates) for
- * one or more domains using ext-openssl. The first domain is the CN; every
+ * one or more domains using ext-openssl. The CN is the first domain that fits a
+ * common name (RFC 5280: 64 characters at most) — none when no domain does; every
  * domain is added as a subjectAltName so SAN/wildcard certificates work.
  */
 final class Csr
 {
+    /**
+     * RFC 5280 ub-common-name: OpenSSL refuses a longer CN, while a hostname may run to 253.
+     */
+    private const MAX_COMMON_NAME = 64;
+
     /**
      * Generate a fresh private key for a leaf certificate.
      */
@@ -41,11 +47,7 @@ final class Csr
         [$configFile, $config] = $this->opensslConfig($domains);
 
         try {
-            $csr = openssl_csr_new(
-                ['commonName' => $domains[0]],
-                $key,
-                $config,
-            );
+            $csr = openssl_csr_new($this->subject($domains), $key, $config);
 
             if (! $csr instanceof \OpenSSLCertificateSigningRequest) {
                 throw AcmeException::finalizeFailed('could not create CSR');
@@ -76,7 +78,7 @@ final class Csr
         [$configFile, $config] = $this->opensslConfig($domains);
 
         try {
-            $csr = openssl_csr_new(['commonName' => $domains[0]], $key, $config);
+            $csr = openssl_csr_new($this->subject($domains), $key, $config);
 
             if (! $csr instanceof \OpenSSLCertificateSigningRequest) {
                 throw AcmeException::finalizeFailed('could not create CSR for self-signed certificate');
@@ -134,7 +136,7 @@ final class Csr
             'req_extensions = v3_req',
             'prompt = no',
             '[req_distinguished_name]',
-            'commonName = '.$domains[0],
+            ...array_map(static fn (string $cn): string => 'commonName = '.$cn, array_values($this->subject($domains))),
             '[v3_req]',
             'basicConstraints = CA:FALSE',
             'keyUsage = nonRepudiation, digitalSignature, keyEncipherment',
@@ -153,6 +155,24 @@ final class Csr
             'x509_extensions' => 'v3_req',
             'digest_alg' => 'sha256',
         ]];
+    }
+
+    /**
+     * The subject: the first domain that fits a common name, or none — the subjectAltName
+     * extension names every domain either way, and that is what clients and CAs check.
+     *
+     * @param  list<string>  $domains
+     * @return array<string, string>
+     */
+    private function subject(array $domains): array
+    {
+        foreach ($domains as $domain) {
+            if (strlen($domain) <= self::MAX_COMMON_NAME) {
+                return ['commonName' => $domain];
+            }
+        }
+
+        return [];
     }
 
     private function pemToDer(string $pem, string $label): string
