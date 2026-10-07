@@ -15,7 +15,8 @@ use RoundlyConsulting\Certificates\Support\CertificateModel;
  * Pull a driver's live certificates into the registry, one row per (driver, name).
  * Providers that report status also refresh status, expiry, issuer, serial and fingerprint
  * (a Pending report never demotes a Requested/Renewing row); for the rest a new — or
- * revived pruned — row starts as Issued and an existing row keeps its status.
+ * revived pruned — row starts as Issued and an existing row keeps its status. A live
+ * Revoked row stays Revoked whatever the provider reports.
  *
  * Reach it through `Certificates::sync()` (what `certificates:sync` runs).
  */
@@ -57,7 +58,7 @@ final readonly class SyncCertificatesAction
             if ($provider instanceof ReportsCertificateStatus) {
                 $report = $provider->status($remote->name, $remote->domain);
                 $model->forceFill([
-                    'status' => $this->statusFor($model, $report->status),
+                    'status' => $this->statusFor($model, $report->status, $revived),
                     'expires_at' => $report->expiresAt,
                     'issuer' => $report->issuer ?? $model->issuer,
                     'serial' => $report->serial ?? $model->serial,
@@ -78,8 +79,15 @@ final readonly class SyncCertificatesAction
      * A provider reporting Pending is still issuing; a row already Requested or Renewing
      * says the same thing more precisely, so it keeps its status until there is an outcome.
      */
-    private function statusFor(Certificate $model, CertificateStatus $reported): CertificateStatus
+    private function statusFor(Certificate $model, CertificateStatus $reported, bool $revived): CertificateStatus
     {
+        // Revoked is terminal and registry-only: the backend still holds the material, so what
+        // it reports never overrides the decision — only a fresh issue() revives the row. (A
+        // pruned row a sync revives is a fresh registration, like a new one.)
+        if ($model->exists && ! $revived && $model->status === CertificateStatus::Revoked) {
+            return CertificateStatus::Revoked;
+        }
+
         $inFlight = $model->exists
             && in_array($model->status, [CertificateStatus::Requested, CertificateStatus::Renewing], true);
 

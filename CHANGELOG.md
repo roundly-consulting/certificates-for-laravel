@@ -22,6 +22,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - On the `kubernetes` driver (and any provider that reports no fingerprint), `renew()` no longer records a renewal when the reported expiry did not move later: cert-manager keeps reporting `Ready` while its own renewal fails, and the row was marked `Renewed` with the old `notAfter` and `CertificateRenewed` fired every day. Such a renewal now throws `CertificateException`, marks the row `Failed` and fires `CertificateFailed`.
 - Re-issuing a certificate on the `kubernetes` driver with a changed set of domains (`alsoFor()`) now updates the Ingress: the TLS entry's hosts are rewritten to the new set and a rule is added for each new host. It used to write nothing while the registry recorded the new domains as issued. Rules are only added, never removed.
 - Concurrent issuance of different domains on the `kubernetes` driver no longer fails one of them: an Ingress write that loses the race (`409 Conflict`, including two processes creating the Ingress at once) is re-read and retried up to five times, keeping both TLS entries. The losing certificate used to be marked `Failed` with no expiry and was never retried.
+- `Certificates::sync()` / `certificates:sync` no longer un-revokes a certificate: a `Revoked` row stays `Revoked` whatever the provider reports, since revocation is recorded in the registry only. A fresh `issue()` still revives it.
 
 ### Security
 
