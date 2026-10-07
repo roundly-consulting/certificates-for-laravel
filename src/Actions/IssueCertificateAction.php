@@ -142,6 +142,14 @@ final readonly class IssueCertificateAction
             'name' => $name,
         ]);
 
+        // The name folds `.` and `*.` into `-` / `wildcard-`, so two domains can share one.
+        // The row — and the secret / stored material keyed by the name — stays with the
+        // domain that registered it, pruned or not: never hand it to another domain and its
+        // owner. (A blank domain is a row sync recorded without one; it is claimable.)
+        if ($model->exists && $model->domain !== '' && $model->domain !== $data->domain) {
+            throw CertificateException::nameTaken($name, $data->domain);
+        }
+
         if ($model->trashed()) {
             // A pruned row comes back as a fresh registration, not with its dead history.
             $model->forceFill([

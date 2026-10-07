@@ -142,16 +142,25 @@ final class CertificatesFake extends CertificatesManager
         }
 
         $domain = $domains[0];
+        $name = $this->certificateName($domain);
+        $driver = $data->driver ?? 'array';
+
+        // As for real: a name another domain already holds is refused, not taken over.
+        foreach ($this->store as $stored) {
+            if ($stored->name === $name && $stored->driver === $driver && $stored->domain !== $domain) {
+                throw CertificateException::nameTaken($name, $domain);
+            }
+        }
 
         $this->requested[] = $domain;
 
         $model = CertificateModel::class();
         $certificate = new $model;
         $certificate->forceFill([
-            'name' => $this->certificateName($domain),
+            'name' => $name,
             'domain' => $domain,
             'domains' => count($domains) > 1 ? $domains : null,
-            'driver' => $data->driver ?? 'array',
+            'driver' => $driver,
             'status' => CertificateStatus::Issued,
             'issued_at' => CarbonImmutable::now(),
             'expires_at' => CarbonImmutable::now()->addDays($data->validForDays ?? 90),

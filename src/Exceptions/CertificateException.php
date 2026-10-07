@@ -40,6 +40,16 @@ class CertificateException extends Exception
         ]));
     }
 
+    /**
+     * Two domains fold into one certificate name (`a.b.com` / `a-b.com`, `*.x` / `wildcard.x`):
+     * the name, its registry row and its secret / stored material stay with the domain that
+     * registered it first. The other domain is deliberately not named.
+     */
+    public static function nameTaken(string $name, string $domain): self
+    {
+        return new self((string) trans('certificates::messages.name_taken', ['name' => $name, 'domain' => $domain]));
+    }
+
     public static function noMaterial(string $name): self
     {
         return new self((string) trans('certificates::messages.no_material', ['name' => $name]));
