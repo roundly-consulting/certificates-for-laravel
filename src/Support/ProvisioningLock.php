@@ -19,11 +19,25 @@ use Illuminate\Support\Facades\Cache;
  */
 final class ProvisioningLock
 {
+    /**
+     * The default safety expiry: ten minutes, well above an ACME order that polls each
+     * authorization and the order itself for up to attempts × seconds (30 × 2 s by default).
+     */
+    public const DEFAULT_SECONDS = 600;
+
     public static function for(string $certificateName): Lock
     {
         return Cache::lock(
             name: Settings::string('certificates.lock.name', config('certificates.lock.name'), 'certificates:generate').':'.$certificateName,
-            seconds: Settings::integer('certificates.lock.locked_for_seconds', config('certificates.lock.locked_for_seconds'), 5, min: 1),
+            seconds: self::seconds(),
         );
+    }
+
+    /**
+     * `certificates.lock.locked_for_seconds`: how long a provisioning lock lives at most.
+     */
+    public static function seconds(): int
+    {
+        return Settings::integer('certificates.lock.locked_for_seconds', config('certificates.lock.locked_for_seconds'), self::DEFAULT_SECONDS, min: 1);
     }
 }

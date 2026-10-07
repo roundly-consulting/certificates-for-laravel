@@ -6,6 +6,14 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 
 ## Unreleased
 
+### Changed
+
+- `certificates.lock.locked_for_seconds` (`CERTIFICATES_LOCK_SECONDS`) now defaults to `600` (was `5`). Hosts that set it explicitly keep their value; keep it above your slowest issuance.
+
+### Fixed
+
+- The provisioning lock no longer expires in the middle of an ACME issuance: with the old 5-second default a concurrent `issue()` of the same domain started a second ACME order while the first was still polling.
+
 ### Security
 
 - Issuing a certificate whose name collides with another domain's (`a.b.com` and `a-b.com`, or `*.example.com` and `wildcard.example.com`, fold into the same name) now throws a `CertificateException` instead of taking over the other domain's registry row, owner and secret / stored material. The name stays with the domain that registered it first, pruned or not; `Certificates::fake()` refuses the same way.

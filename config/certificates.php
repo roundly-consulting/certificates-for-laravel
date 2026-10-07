@@ -104,12 +104,13 @@ return [
     | are never blocked. While it is held, issue() throws
     | ProvisioningInProgressException and generate() returns false.
     | "locked_for_seconds" is the lock's safety expiry — keep it above your
-    | slowest issuance (an ACME order polls for up to attempts x seconds).
+    | slowest issuance (an ACME order polls each authorization and the order
+    | for up to attempts x seconds). The default is ten minutes.
     |
     */
     'lock' => [
         'name' => env('CERTIFICATES_LOCK_NAME', 'certificates:generate'),
-        'locked_for_seconds' => env('CERTIFICATES_LOCK_SECONDS', 5),
+        'locked_for_seconds' => env('CERTIFICATES_LOCK_SECONDS', 600),
     ],
 
     /*
