@@ -17,6 +17,7 @@ use RoundlyConsulting\Certificates\Database\Factories\CertificateFactory;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Events\CertificateExpired;
 use RoundlyConsulting\Certificates\Events\CertificateRevoked;
+use RoundlyConsulting\Certificates\Support\ProvisioningLock;
 use RoundlyConsulting\Certificates\Support\Settings;
 
 /**
@@ -107,6 +108,41 @@ class Certificate extends Model
         }
 
         return $this->expires_at->lessThanOrEqualTo(CarbonImmutable::now()->addDays($days));
+    }
+
+    /**
+     * Whether a renewal may start now: the status allows it, or an earlier renewal was
+     * interrupted and left the row stuck in Renewing (see isStaleRenewal()).
+     *
+     * @internal the renew action's, renewLater()'s and the fake's guard
+     */
+    public function canRenew(): bool
+    {
+        return $this->status->canTransitionTo(CertificateStatus::Renewing) || $this->isStaleRenewal();
+    }
+
+    /**
+     * Whether this row is stuck in Renewing: the renewal's process died (a queue timeout
+     * mid-poll, a deploy) and the row has been untouched for longer than a provisioning lock
+     * lives (`certificates.lock.locked_for_seconds`), so no process can still be renewing it.
+     *
+     * @internal see canRenew()
+     */
+    public function isStaleRenewal(): bool
+    {
+        return $this->status === CertificateStatus::Renewing
+            && $this->updated_at !== null
+            && $this->updated_at->lessThanOrEqualTo(self::staleRenewalCutoff());
+    }
+
+    /**
+     * A Renewing row last touched at or before this instant is a stuck renewal.
+     *
+     * @internal see isStaleRenewal()
+     */
+    public static function staleRenewalCutoff(): CarbonImmutable
+    {
+        return CarbonImmutable::now()->subSeconds(ProvisioningLock::seconds());
     }
 
     public function daysUntilExpiry(): ?int
@@ -221,15 +257,23 @@ class Certificate extends Model
     /**
      * Certificates whose live certificate runs out within `$days` (default:
      * `certificates.renewal.threshold_days`): Issued, Renewed — and Failed, since a failed
-     * renewal leaves the old certificate running out with nothing renewing it.
+     * renewal leaves the old certificate running out with nothing renewing it, as does a
+     * renewal that was interrupted and left the row stuck in Renewing.
      *
      * @param  Builder<Certificate>  $query
      */
     public function scopeExpiring(Builder $query, ?int $days = null): void
     {
         $days ??= self::thresholdDays();
+        $updatedAt = $query->getModel()->getUpdatedAtColumn() ?? 'updated_at';
 
-        $query->whereIn('status', [CertificateStatus::Issued, CertificateStatus::Renewed, CertificateStatus::Failed])
+        $query->where(function (Builder $query) use ($updatedAt): void {
+            $query->whereIn('status', [CertificateStatus::Issued, CertificateStatus::Renewed, CertificateStatus::Failed])
+                ->orWhere(function (Builder $query) use ($updatedAt): void {
+                    $query->where('status', CertificateStatus::Renewing)
+                        ->where($updatedAt, '<=', self::staleRenewalCutoff());
+                });
+        })
             ->whereNotNull('expires_at')
             ->whereBetween('expires_at', [CarbonImmutable::now(), CarbonImmutable::now()->addDays($days)]);
     }

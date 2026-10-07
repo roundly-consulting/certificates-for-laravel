@@ -224,7 +224,7 @@ final class CertificatesFake extends CertificatesManager
 
         $due = array_filter(
             $this->store,
-            static fn (Certificate $certificate): bool => ($certificate->status->isActive() || $certificate->status === CertificateStatus::Failed)
+            static fn (Certificate $certificate): bool => ($certificate->status->isActive() || $certificate->status === CertificateStatus::Failed || $certificate->isStaleRenewal())
                 && $certificate->expires_at !== null
                 && $certificate->expires_at->between(CarbonImmutable::now(), $until)
                 && ($driver === null || $certificate->driver === $driver),
@@ -513,7 +513,10 @@ final class CertificatesFake extends CertificatesManager
     {
         $certificate = $this->resolve($certificate);
 
-        if (! $certificate->status->canTransitionTo($to)) {
+        // As for real: a renewal may also take over one an interrupted process left stuck.
+        $allowed = $to === CertificateStatus::Renewing ? $certificate->canRenew() : $certificate->status->canTransitionTo($to);
+
+        if (! $allowed) {
             throw CertificateException::illegalTransition($certificate->status, $to);
         }
 

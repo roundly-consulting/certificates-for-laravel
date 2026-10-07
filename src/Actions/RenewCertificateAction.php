@@ -30,7 +30,8 @@ use Throwable;
  * A renewal holds the certificate's provisioning lock (the one issue() takes), and the row
  * moves to Renewing only if it is still in the status this process read: a concurrent
  * renewal, or a model loaded before another process renewed it, throws
- * ProvisioningInProgressException instead of renewing twice.
+ * ProvisioningInProgressException instead of renewing twice. A row an interrupted renewal
+ * left in Renewing for longer than the lock lives is renewed again rather than stranded.
  *
  * Reach it through `Certificates::renew()` / `Certificates::for($domain)->renew()`.
  */
@@ -43,7 +44,7 @@ final readonly class RenewCertificateAction
 
     public function execute(Certificate $certificate): Certificate
     {
-        if (! $certificate->status->canTransitionTo(CertificateStatus::Renewing)) {
+        if (! $certificate->canRenew()) {
             throw CertificateException::illegalTransition($certificate->status, CertificateStatus::Renewing);
         }
 
@@ -130,6 +131,12 @@ final readonly class RenewCertificateAction
         $claimed = $certificate->newQuery()
             ->whereKey($certificate->getKey())
             ->where('status', $certificate->getOriginal('status'))
+            // A stuck Renewing row is taken over once: whoever reclaims it first moves its
+            // timestamp, and a second process holding the same stale model then matches nothing.
+            ->when($certificate->isStaleRenewal(), fn ($query) => $query->where(
+                $certificate->getUpdatedAtColumn() ?? 'updated_at',
+                $certificate->getOriginal($certificate->getUpdatedAtColumn() ?? 'updated_at'),
+            ))
             ->update($values);
 
         if ($claimed !== 1) {

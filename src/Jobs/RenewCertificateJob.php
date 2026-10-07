@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use RoundlyConsulting\Certificates\Actions\RenewCertificateAction;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
+use RoundlyConsulting\Certificates\Support\ProvisioningLock;
 use RoundlyConsulting\Certificates\Support\Settings;
 
 /**
@@ -21,6 +22,10 @@ use RoundlyConsulting\Certificates\Support\Settings;
  * A job a sweep queued carries the sweep's threshold and does nothing once the certificate
  * is no longer due — an earlier job or a manual renew() got there first. A renewLater()
  * job carries none and always renews.
+ *
+ * It may run as long as the provisioning lock lives (`certificates.lock.locked_for_seconds`):
+ * an ACME renewal polls for minutes, and a worker killed mid-renewal would leave the row in
+ * Renewing until the lock's lifetime has passed. Keep the queue's `retry_after` above it.
  */
 final class RenewCertificateJob implements ShouldQueue
 {
@@ -35,12 +40,18 @@ final class RenewCertificateJob implements ShouldQueue
      */
     public ?int $thresholdDays = null;
 
+    /**
+     * Seconds the worker lets this job run: the provisioning lock's lifetime.
+     */
+    public int $timeout = ProvisioningLock::DEFAULT_SECONDS;
+
     public function __construct(
         public readonly int $certificateId,
         public readonly ?string $databaseConnection = null,
         ?int $thresholdDays = null,
     ) {
         $this->thresholdDays = $thresholdDays;
+        $this->timeout = ProvisioningLock::seconds();
 
         $queue = Settings::optionalString('certificates.renewal.queue', config('certificates.renewal.queue'));
 

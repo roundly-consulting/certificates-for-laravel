@@ -232,7 +232,7 @@ class CertificatesManager
     {
         $certificate = $this->resolve($certificate);
 
-        if (! $certificate->status->canTransitionTo(CertificateStatus::Renewing)) {
+        if (! $certificate->canRenew()) {
             throw CertificateException::illegalTransition($certificate->status, CertificateStatus::Renewing);
         }
 
