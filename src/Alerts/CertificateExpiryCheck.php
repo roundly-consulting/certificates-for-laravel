@@ -24,6 +24,10 @@ use RoundlyConsulting\Certificates\Support\Settings;
  *  - registry-wide — no certificate id; fails when any managed certificate is inside
  *    the critical window, past its expiry, Expired or Failed, otherwise warns/ok on the
  *    closest one (revoked certificates are not counted).
+ *
+ * Either mode reads the registry on `$connection` (constructor arg or the scheduled row's
+ * `connection` meta; null = the registry's default), so a tenant certificate's check never
+ * evaluates the row with the same id on another connection.
  */
 final class CertificateExpiryCheck extends Check
 {
@@ -32,6 +36,7 @@ final class CertificateExpiryCheck extends Check
         private readonly ?int $warningDays = null,
         private readonly ?int $criticalDays = null,
         ?HealthCheck $healthCheck = null,
+        private readonly ?string $connection = null,
     ) {
         parent::__construct($healthCheck);
     }
@@ -65,7 +70,7 @@ final class CertificateExpiryCheck extends Check
 
     private function checkCertificate(int $certificateId): CheckResult
     {
-        $certificate = CertificateModel::class()::query()->find($certificateId);
+        $certificate = CertificateModel::class()::on($this->connection())->find($certificateId);
 
         if (! $certificate instanceof Certificate) {
             return CheckResult::skipped(
@@ -91,7 +96,7 @@ final class CertificateExpiryCheck extends Check
         // issuance that never finished leaves nothing live behind it.
         // Revoked rows are a deliberate decision (alerted once, via CertificateRevoked),
         // not something the registry signal should stay red over.
-        CertificateModel::class()::query()
+        CertificateModel::class()::on($this->connection())
             ->where(function ($query) use ($warningDays): void {
                 $query->whereIn('status', [CertificateStatus::Failed, CertificateStatus::Expired])
                     ->orWhere(function ($query) use ($warningDays): void {
@@ -209,6 +214,17 @@ final class CertificateExpiryCheck extends Check
         $value = $this->healthCheck?->meta['certificate_id'] ?? null;
 
         return is_numeric($value) ? (int) $value : null;
+    }
+
+    private function connection(): ?string
+    {
+        if ($this->connection !== null) {
+            return $this->connection;
+        }
+
+        $value = $this->healthCheck?->meta['connection'] ?? null;
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function warningDays(): int

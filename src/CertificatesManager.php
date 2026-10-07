@@ -298,7 +298,8 @@ class CertificatesManager
      *
      * Returns the alerts PendingScheduledCheck builder so the host chains
      * frequency/failAfter/notifyVia/escalate before ->save(). The notifiable is
-     * resolved with the precedence: explicit arg -> config FQCN -> certifiable owner.
+     * resolved with the precedence: explicit arg -> config FQCN -> certifiable owner. The
+     * schedule records the certificate's id and database connection.
      *
      * @throws CertificateException when no notifiable can be resolved
      */
@@ -314,7 +315,7 @@ class CertificatesManager
             ->for($target)
             ->monitor(CertificateExpiryCheck::class)
             ->tags(['certificates'])
-            ->meta(['certificate_id' => $certificate->id]);
+            ->meta(['certificate_id' => $certificate->id, 'connection' => $certificate->getConnectionName()]);
     }
 
     /**

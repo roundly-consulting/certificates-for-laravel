@@ -37,6 +37,10 @@ final class AlertOnCertificateLifecycleFailure
             return;
         }
 
-        Health::for($notifiable)->run(new CertificateExpiryCheck(certificateId: $certificate->id));
+        // The row's own connection: a tenant certificate is checked in the tenant registry.
+        Health::for($notifiable)->run(new CertificateExpiryCheck(
+            certificateId: $certificate->id,
+            connection: $certificate->getConnectionName(),
+        ));
     }
 }

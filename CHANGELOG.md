@@ -25,6 +25,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - Concurrent issuance of different domains on the `kubernetes` driver no longer fails one of them: an Ingress write that loses the race (`409 Conflict`, including two processes creating the Ingress at once) is re-read and retried up to five times, keeping both TLS entries. The losing certificate used to be marked `Failed` with no expiry and was never retried.
 - `Certificates::sync()` / `certificates:sync` no longer un-revokes a certificate: a `Revoked` row stays `Revoked` whatever the provider reports, since revocation is recorded in the registry only. A fresh `issue()` still revives it.
 - On the default `kubernetes` driver, where issuance completes asynchronously, `CertificateIssued` and `CertificateFailed` now fire and `issued_at` is set once `certificates:sync` sees the outcome; before, no issuance event ever fired on that driver and `issued_at` stayed empty.
+- Expiry alerts for a certificate on another database connection now evaluate that certificate: `certificates:check --connection=…`, the lifecycle alert listener and `monitorExpiry()` schedules used to load the same id from the default connection (another certificate, or "skipped"). `CertificateExpiryCheck` takes a `connection` argument (or `connection` meta on a scheduled check), and `monitorExpiry()` records it.
 
 ### Security
 

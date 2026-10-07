@@ -88,7 +88,10 @@ final class CheckCertificatesCommand extends Command
             return;
         }
 
-        Health::for($notifiable)->run(new CertificateExpiryCheck(certificateId: $certificate->id));
+        Health::for($notifiable)->run(new CertificateExpiryCheck(
+            certificateId: $certificate->id,
+            connection: $certificate->getConnectionName(),
+        ));
 
         $this->info((string) trans('certificates::messages.commands.alerted', [
             'domain' => $certificate->domain,
