@@ -20,6 +20,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - A certificate whose renewal kept failing is now still renewed after it has expired: `renewDue()` used to drop it from the due set exactly at expiry, so the retries stopped when they mattered most. `Certificates::fake()` matches.
 - The registry-wide `CertificateExpiryCheck` now fails for a certificate still in flight (`Pending`, `Requested`, `Renewing`) that is past its expiry; such a row used to read as healthy while its per-certificate check failed.
 - On the `kubernetes` driver (and any provider that reports no fingerprint), `renew()` no longer records a renewal when the reported expiry did not move later: cert-manager keeps reporting `Ready` while its own renewal fails, and the row was marked `Renewed` with the old `notAfter` and `CertificateRenewed` fired every day. Such a renewal now throws `CertificateException`, marks the row `Failed` and fires `CertificateFailed`.
+- Re-issuing a certificate on the `kubernetes` driver with a changed set of domains (`alsoFor()`) now updates the Ingress: the TLS entry's hosts are rewritten to the new set and a rule is added for each new host. It used to write nothing while the registry recorded the new domains as issued. Rules are only added, never removed.
 
 ### Security
 

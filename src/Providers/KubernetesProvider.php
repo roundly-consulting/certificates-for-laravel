@@ -128,31 +128,84 @@ final class KubernetesProvider implements CertificateProvider, ProvisionsMultipl
     {
         $ingress = $this->fetchIngress();
 
-        $schema = $ingress ?? $this->baseIngressSchema();
+        $schema = $this->withCertificate($ingress ?? $this->baseIngressSchema(), $name, $domains);
 
+        if ($schema === null) {
+            // The Ingress already secures and routes exactly these hosts; nothing to do.
+            return;
+        }
+
+        $this->applyIngress($name, $schema, $ingress !== null);
+    }
+
+    /**
+     * The Ingress with a TLS entry for `$name` covering exactly `$domains`, and a rule for each
+     * host; null when it already has both. A re-issue with a changed SAN set rewrites the
+     * existing entry's hosts — the cluster must secure what the registry records. Rules are
+     * only ever added: a host dropped from the certificate may still be routed on purpose.
+     *
+     * @param  array<string, mixed>  $schema
+     * @param  list<string>  $domains
+     * @return array<string, mixed>|null
+     */
+    private function withCertificate(array $schema, string $name, array $domains): ?array
+    {
         /** @var list<array{hosts?: list<string>, secretName?: string}> $tls */
         $tls = $schema['spec']['tls'] ?? [];
-
-        foreach ($tls as $entry) {
-            if (($entry['secretName'] ?? null) === $name) {
-                // The Ingress already has a TLS entry for this secret; nothing to do.
-                return;
-            }
-        }
 
         /** @var list<array<string, mixed>> $rules */
         $rules = $schema['spec']['rules'] ?? [];
 
-        $tls[] = ['hosts' => $domains, 'secretName' => $name];
+        $existing = null;
 
-        foreach ($domains as $domain) {
-            $rules[] = $this->ruleFor($domain);
+        foreach ($tls as $index => $entry) {
+            if (($entry['secretName'] ?? null) === $name) {
+                $existing = $index;
+
+                break;
+            }
+        }
+
+        if ($existing === null) {
+            $tls[] = ['hosts' => $domains, 'secretName' => $name];
+
+            foreach ($domains as $domain) {
+                $rules[] = $this->ruleFor($domain);
+            }
+        } else {
+            $hosts = $tls[$existing]['hosts'] ?? [];
+            $routed = array_map(static fn (array $rule): mixed => $rule['host'] ?? null, $rules);
+            $missing = array_values(array_filter($domains, static fn (string $domain): bool => ! in_array($domain, $routed, true)));
+
+            if ($this->sameHosts($hosts, $domains) && $missing === []) {
+                return null;
+            }
+
+            $tls[$existing]['hosts'] = $domains;
+
+            foreach ($missing as $domain) {
+                $rules[] = $this->ruleFor($domain);
+            }
         }
 
         $schema['spec']['tls'] = $tls;
         $schema['spec']['rules'] = $rules;
 
-        $this->applyIngress($name, $schema, $ingress !== null);
+        return $schema;
+    }
+
+    /**
+     * @param  list<string>  $a
+     * @param  list<string>  $b
+     */
+    private function sameHosts(array $a, array $b): bool
+    {
+        $a = array_values(array_unique($a));
+        $b = array_values(array_unique($b));
+        sort($a);
+        sort($b);
+
+        return $a === $b;
     }
 
     /**
