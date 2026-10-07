@@ -31,6 +31,7 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 - The `acme` driver now fails at once with the CA's error detail when an authorization or order poll is answered with an HTTP error, instead of reading the problem document as "pending" and ending in a misleading timeout; and it falls back to the order URL from `newOrder` when the finalize response carries no `Location` header (`AcmeClient::finalize()` takes it as an optional third argument).
 - Hostnames longer than 64 characters can now be issued on the `acme` driver and self-signed on the `filesystem` driver: the CSR's common name is the first domain that fits a common name (64 characters at most), or none, instead of always the first domain, which made OpenSSL refuse the CSR. Every domain is still in the subjectAltName extension.
 - `Certificates::for($domain)->using($driver)->status()` and `->exists()` now read the chosen driver, like `find()` and the lifecycle verbs already did; `status()` reported the domain's newest row on any driver and `exists()` asked the default driver. `Certificates::status()` and `Certificates::exists()` take an optional `$driver` argument, and `Certificates::fake()` honours it.
+- `Certificates::fake()` now records a certificate issued without an explicit driver on the configured default driver (it used `array`) and keeps its `meta`, as a real `issue()` does.
 
 ### Security
 

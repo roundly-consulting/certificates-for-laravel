@@ -66,7 +66,9 @@ it('records issued certificates and passes assertions', function (): void {
     expect(Certificates::status('app.example.com'))->toBe(CertificateStatus::Issued)
         ->and(Certificates::exists('app.example.com'))->toBeTrue()
         ->and(Certificates::find('app.example.com'))->not->toBeNull()
-        ->and(Certificates::find('app.example.com', 'kubernetes'))->toBeNull()
+        // The configured default driver, as a real issue() records (chat review C-17).
+        ->and(Certificates::find('app.example.com', 'kubernetes'))->not->toBeNull()
+        ->and(Certificates::find('app.example.com', 'acme'))->toBeNull()
         ->and(Certificates::statusReport('app.example.com')?->status)->toBe(CertificateStatus::Issued)
         ->and(Certificates::statusReport('missing.example.com'))->toBeNull()
         ->and(Certificates::on('tenant')->get())->toHaveCount(1);

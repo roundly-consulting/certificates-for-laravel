@@ -143,7 +143,8 @@ final class CertificatesFake extends CertificatesManager
 
         $domain = $domains[0];
         $name = $this->certificateName($domain);
-        $driver = $data->driver ?? 'array';
+        // As for real: no explicit driver means the configured default one.
+        $driver = $data->driver ?? $this->providers->getDefaultDriver();
 
         // As for real: a name another domain already holds is refused, not taken over.
         foreach ($this->store as $stored) {
@@ -161,6 +162,7 @@ final class CertificatesFake extends CertificatesManager
             'domain' => $domain,
             'domains' => count($domains) > 1 ? $domains : null,
             'driver' => $driver,
+            'meta' => $data->meta === [] ? null : $data->meta,
             'status' => CertificateStatus::Issued,
             'issued_at' => CarbonImmutable::now(),
             'expires_at' => CarbonImmutable::now()->addDays($data->validForDays ?? 90),
