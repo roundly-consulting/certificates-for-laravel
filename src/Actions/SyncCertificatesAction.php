@@ -4,10 +4,17 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Certificates\Actions;
 
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use RoundlyConsulting\Certificates\CertificateProviderManager;
 use RoundlyConsulting\Certificates\Contracts\ReportsCertificateStatus;
+use RoundlyConsulting\Certificates\DataTransferObjects\CertificateStatusReport;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
+use RoundlyConsulting\Certificates\Events\CertificateFailed;
+use RoundlyConsulting\Certificates\Events\CertificateIssued;
+use RoundlyConsulting\Certificates\Events\CertificateRenewed;
+use RoundlyConsulting\Certificates\Exceptions\CertificateException;
 use RoundlyConsulting\Certificates\Models\Certificate;
 use RoundlyConsulting\Certificates\Support\CertificateModel;
 
@@ -17,6 +24,12 @@ use RoundlyConsulting\Certificates\Support\CertificateModel;
  * (a Pending report never demotes a Requested/Renewing row); for the rest a new — or
  * revived pruned — row starts as Issued and an existing row keeps its status. A live
  * Revoked row stays Revoked whatever the provider reports.
+ *
+ * Sync also settles what was still in flight, completing the lifecycle the way issue() and
+ * renew() do: Requested → Issued sets issued_at and fires CertificateIssued; Renewing →
+ * Issued with a new certificate (a new fingerprint or, without one, a later expiry) is
+ * recorded as Renewed with CertificateRenewed; an existing row moving to Failed fires
+ * CertificateFailed. A row sync discovers or revives fires nothing.
  *
  * Reach it through `Certificates::sync()` (what `certificates:sync` runs).
  */
@@ -54,9 +67,12 @@ final readonly class SyncCertificatesAction
             }
 
             $model->forceFill(['domain' => Str::lower($remote->domain)]);
+            $event = null;
 
             if ($provider instanceof ReportsCertificateStatus) {
                 $report = $provider->status($remote->name, $remote->domain);
+                $previous = $model->exists && ! $revived ? clone $model : null;
+
                 $model->forceFill([
                     'status' => $this->statusFor($model, $report->status, $revived),
                     'expires_at' => $report->expiresAt,
@@ -64,15 +80,72 @@ final readonly class SyncCertificatesAction
                     'serial' => $report->serial ?? $model->serial,
                     'fingerprint' => $report->fingerprint ?? $model->fingerprint,
                 ]);
+
+                $event = $previous === null ? null : $this->settle($model, $previous, $report, $driver);
             } elseif (! $model->exists || $revived) {
                 $model->forceFill(['status' => CertificateStatus::Issued]);
             }
 
             $model->save();
             $count++;
+
+            if ($event !== null) {
+                Event::dispatch($event);
+            }
         }
 
         return $count;
+    }
+
+    /**
+     * Complete the lifecycle step this sync observed on an existing row — the event issue()
+     * or renew() would have fired had the outcome been known then. `$previous` is the row as
+     * it was before this sync.
+     */
+    private function settle(Certificate $model, Certificate $previous, CertificateStatusReport $report, string $driver): CertificateIssued|CertificateRenewed|CertificateFailed|null
+    {
+        if ($model->status === $previous->status) {
+            return null;
+        }
+
+        if ($previous->status === CertificateStatus::Requested && $model->status === CertificateStatus::Issued) {
+            $model->forceFill(['issued_at' => CarbonImmutable::now(), 'last_error' => null]);
+
+            return new CertificateIssued($model);
+        }
+
+        if ($previous->status === CertificateStatus::Renewing && $model->status === CertificateStatus::Issued && $this->replaced($previous, $report)) {
+            $model->forceFill([
+                'status' => CertificateStatus::Renewed,
+                'last_renewed_at' => CarbonImmutable::now(),
+                'last_error' => null,
+            ]);
+
+            return new CertificateRenewed($model);
+        }
+
+        if ($model->status === CertificateStatus::Failed) {
+            $reason = CertificateException::providerReported($driver, $model->domain, CertificateStatus::Failed)->getMessage();
+            $model->forceFill(['last_error' => $reason]);
+
+            return new CertificateFailed($model, $reason);
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the provider now holds a different certificate than the row recorded — the
+     * proof renew() asks for: a new fingerprint, or without one a later expiry.
+     */
+    private function replaced(Certificate $previous, CertificateStatusReport $report): bool
+    {
+        if ($report->fingerprint !== null) {
+            return $report->fingerprint !== $previous->fingerprint;
+        }
+
+        return $report->expiresAt !== null
+            && ($previous->expires_at === null || $report->expiresAt->greaterThan($previous->expires_at));
     }
 
     /**
