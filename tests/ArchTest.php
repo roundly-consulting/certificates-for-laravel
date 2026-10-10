@@ -153,29 +153,22 @@ it('leaves openssl in the CSR generator alone', function (): void {
 });
 
 /*
- * Each vendor is named by its real PSR-4 root(s). Pest resolves a name only through an
- * autoload root at or above it, so a bare `ParagonIE` or `AcmePhp` (whose packages are
- * rooted at `ParagonIE\ConstantTime\`, `AcmePhp\Core\`, …) matched nothing even with the
- * vendor installed — measured with a simulated install, the rule stayed green on
- * `AcmePhp\Core\AcmeClient`. None of these vendors is in the graph today; this bites the
- * day one arrives, transitively or otherwise.
+ * Builds on crypto-for-laravel rather than a third-party crypto vendor. A source-token scan,
+ * not `->not->toUse()`: Pest resolves a name only through an installed PSR-4 root at or above
+ * it, so a bare vendor prefix missed its sibling packages (`AcmePhp\Core\AcmeClient` stayed
+ * green under `AcmePhp`) and an uninstalled vendor matched nothing. None of these vendors is in
+ * the graph today; this bites the day one arrives, transitively or otherwise.
  */
-it('builds on crypto-for-laravel rather than a third-party crypto vendor')
-    ->expect('RoundlyConsulting\Certificates')
-    ->not->toUse([
-        'Firebase\JWT',
-        'Lcobucci\JWT',
-        'Jose\Component',
-        'ParagonIE\ConstantTime',
-        'ParagonIE\Sodium',
-        'ParagonIE\Halite',
-        'ParagonIE\Paseto',
-        'ParagonIE\CipherSweet',
-        'phpseclib3',
-        'phpseclib4',
-        'AcmePhp\Core',
-        'AcmePhp\Ssl',
-    ]);
+ArchPresets::noVendorNamespace([
+    'Firebase\JWT',
+    'Lcobucci\JWT',
+    'Jose\Component',
+    'ParagonIE',
+    'phpseclib',
+    'phpseclib3',
+    'phpseclib4',
+    'AcmePhp',
+], __DIR__.'/../src');
 
 it('does not import a crypto class marked @internal', function (): void {
     $internal = [];
