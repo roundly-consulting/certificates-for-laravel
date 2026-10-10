@@ -152,15 +152,29 @@ it('leaves openssl in the CSR generator alone', function (): void {
     expect($offenders)->toBe([]);
 });
 
+/*
+ * Each vendor is named by its real PSR-4 root(s). Pest resolves a name only through an
+ * autoload root at or above it, so a bare `ParagonIE` or `AcmePhp` (whose packages are
+ * rooted at `ParagonIE\ConstantTime\`, `AcmePhp\Core\`, …) matched nothing even with the
+ * vendor installed — measured with a simulated install, the rule stayed green on
+ * `AcmePhp\Core\AcmeClient`. None of these vendors is in the graph today; this bites the
+ * day one arrives, transitively or otherwise.
+ */
 it('builds on crypto-for-laravel rather than a third-party crypto vendor')
     ->expect('RoundlyConsulting\Certificates')
     ->not->toUse([
         'Firebase\JWT',
         'Lcobucci\JWT',
         'Jose\Component',
-        'ParagonIE',
+        'ParagonIE\ConstantTime',
+        'ParagonIE\Sodium',
+        'ParagonIE\Halite',
+        'ParagonIE\Paseto',
+        'ParagonIE\CipherSweet',
         'phpseclib3',
-        'AcmePhp',
+        'phpseclib4',
+        'AcmePhp\Core',
+        'AcmePhp\Ssl',
     ]);
 
 it('does not import a crypto class marked @internal', function (): void {
