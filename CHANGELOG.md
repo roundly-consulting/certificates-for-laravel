@@ -6,6 +6,8 @@ All notable changes to `certificates-for-laravel` are documented in this file. T
 
 ## Unreleased
 
+## 1.1.2 - 2026-10-11
+
 ### Changed
 
 - Maintenance: requires the latest roundly packages — alerts `^1.2.0`, crypto `^1.1.2`,
