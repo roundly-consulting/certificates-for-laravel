@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use RoundlyConsulting\Certificates\Enums\CertificateStatus;
 use RoundlyConsulting\Certificates\Models\Certificate;
+use RoundlyConsulting\Certificates\Support\CertificateModel;
 
 /**
  * @extends Factory<Certificate>
@@ -15,6 +16,18 @@ use RoundlyConsulting\Certificates\Models\Certificate;
 final class CertificateFactory extends Factory
 {
     protected $model = Certificate::class;
+
+    /**
+     * Build the configured model, not the packaged one: a host that swaps
+     * `certificates.model` gets its own class, with its casts,
+     * events and observers.
+     *
+     * @return class-string<Certificate>
+     */
+    public function modelName(): string
+    {
+        return CertificateModel::class();
+    }
 
     /**
      * @return array<string, mixed>

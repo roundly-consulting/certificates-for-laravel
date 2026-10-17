@@ -16,8 +16,8 @@ use RoundlyConsulting\Certificates\Tests\Fixtures\CustomCertificate;
 it('re-reads a queued renewal through the certificates.model seam', function (): void {
     Event::fake([CertificateRenewed::class]);
 
-    // The packaged factory builds the base class; only the job's re-read decides which
-    // class the listeners receive.
+    // The job carries only the id, so its re-read alone decides which class the listeners
+    // receive — whatever class the factory built the row as.
     $certificate = Certificate::factory()->issued()->create(['domain' => 'queued.test', 'driver' => 'array']);
 
     // The sync queue runs the job inline, so this is the real dispatch → handle path.
