@@ -46,6 +46,13 @@ ArchPresets::swappableModelsAreNotFinal([
 ArchPresets::modelsResolveThroughSeam(__DIR__.'/../src', 'Support');
 
 /**
+ * The factory half of the seam: CertificateFactory returns the CertificateModel seam from
+ * `modelName()`, so a host that swapped `certificates.model` gets its own rows (and events)
+ * out of `Certificate::factory()` instead of the packaged class.
+ */
+ArchPresets::factoriesResolveThroughSeam(__DIR__.'/../database/factories', __DIR__.'/../src', 'Support');
+
+/**
  * The Dependency Policy as a test — the assertion that caught bug #6 fleet-wide, where
  * CI installed testbench into `require` before the suite ran. No `alsoAllow`: this
  * package's `require` ships only php/ext/illuminate/roundly, and the workflow installs
