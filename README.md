@@ -26,7 +26,7 @@ monitor.
 
 ## Installation
 
-Requires PHP 8.4 (`ext-openssl`, `ext-json`) and Laravel 12 or 13.
+Requires PHP 8.4 (`ext-openssl`, `ext-json`) and Laravel 13.
 
 ```bash
 composer require roundly-consulting/certificates-for-laravel
